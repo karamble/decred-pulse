@@ -1,0 +1,59 @@
+# Environment variables (IMPORTANT - contains passwords!)
+.env
+.env.local
+.env.*.local
+
+# Backend
+backend/decred-pulse-backend
+backend/.env
+backend/.env.local
+backend/go.sum
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.vite/
+
+# Docker volumes and data
+dcrd-data/
+dcrd-certs/
+backups/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+dist/
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+

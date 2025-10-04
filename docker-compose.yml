@@ -1,0 +1,75 @@
+services:
+  dcrd:
+    build:
+      context: ./dcrd
+      args:
+        DCRD_VERSION: ${DCRD_VERSION:-master}
+    container_name: decred-pulse-dcrd
+    ports:
+      - "9108:9108"  # P2P port
+      - "9109:9109"  # RPC port
+    volumes:
+      - dcrd-data:/home/dcrd/.dcrd
+      - dcrd-certs:/certs
+      - ./dcrd.conf:/home/dcrd/.dcrd/dcrd.conf:ro
+    command: >
+      --rpcuser=${DCRD_RPC_USER:-decred}
+      --rpcpass=${DCRD_RPC_PASS:-decredpass}
+      --rpclisten=0.0.0.0:9109
+      --rpccert=/certs/rpc.cert
+      --rpckey=/certs/rpc.key
+      --txindex
+    restart: unless-stopped
+    networks:
+      - decred-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -k -u ${DCRD_RPC_USER:-decred}:${DCRD_RPC_PASS:-decredpass} -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"1.0\",\"method\":\"getinfo\",\"params\":[],\"id\":1}' https://127.0.0.1:9109 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  backend:
+    build: ./backend
+    container_name: decred-pulse-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - dcrd-certs:/certs:ro
+    environment:
+      - PORT=8080
+      - DCRD_RPC_HOST=dcrd
+      - DCRD_RPC_PORT=9109
+      - DCRD_RPC_USER=${DCRD_RPC_USER:-decred}
+      - DCRD_RPC_PASS=${DCRD_RPC_PASS:-decredpass}
+      - DCRD_RPC_CERT=/certs/rpc.cert
+    depends_on:
+      dcrd:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - decred-network
+
+  frontend:
+    build: ./frontend
+    container_name: decred-pulse-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8080/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - decred-network
+
+networks:
+  decred-network:
+    driver: bridge
+
+volumes:
+  dcrd-data:
+    driver: local
+  dcrd-certs:
+    driver: local
+
