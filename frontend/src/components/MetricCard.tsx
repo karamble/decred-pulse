@@ -3,11 +3,12 @@
 // license that can be found in the LICENSE file.
 
 import { LucideIcon } from 'lucide-react';
+import { ReactNode } from 'react';
 
 interface MetricCardProps {
   title: string;
   value: string | number;
-  subtitle?: string;
+  subtitle?: string | ReactNode;
   icon: LucideIcon;
   trend?: {
     value: string;

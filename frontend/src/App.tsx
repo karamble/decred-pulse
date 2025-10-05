@@ -75,7 +75,7 @@ function App() {
             <div className="px-4 py-2 rounded-lg bg-primary/10 border border-primary/20">
               <p className="text-sm text-muted-foreground">Version</p>
               <p className="text-lg font-semibold text-primary">
-                {data?.nodeStatus?.version || 'Loading...'}
+                {data?.nodeStatus?.version || 'N/A'}
               </p>
             </div>
           </div>
@@ -110,26 +110,26 @@ function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="Circulating Supply"
-            value={data?.supplyInfo?.circulatingSupply || 'Loading...'}
-            subtitle="DCR in circulation"
+            value={data ? (data.supplyInfo?.circulatingSupply || 'N/A') : 'Loading...'}
+            subtitle="DCR of 21 million"
             icon={Coins}
-            trend={{ value: "Max 21M", isPositive: true }}
+            trend={{ value: "Max Supply: 21M DCR", isPositive: true }}
           />
           <MetricCard
             title="Network Peers"
-            value={data?.networkInfo?.peerCount || 0}
+            value={data ? (data.networkInfo?.peerCount ?? 'N/A') : 'Loading...'}
             subtitle="Connected nodes"
             icon={Users}
           />
           <MetricCard
             title="Block Height"
-            value={data?.blockchainInfo?.blockHeight?.toLocaleString() || 'Loading...'}
+            value={data ? (data.blockchainInfo?.blockHeight?.toLocaleString() || 'N/A') : 'Loading...'}
             subtitle="Latest block"
             icon={Layers}
           />
           <MetricCard
             title="Network Hashrate"
-            value={data?.networkInfo?.hashrate || 'Loading...'}
+            value={data ? (data.networkInfo?.hashrate || 'N/A') : 'Loading...'}
             subtitle="Total network power"
             icon={TrendingUp}
           />
@@ -138,27 +138,37 @@ function App() {
         {/* Additional Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
-            title="Treasury Size"
-            value={data?.supplyInfo?.treasurySize || 'Loading...'}
-            subtitle="Self-funded from block reward"
+            title="Treasury Balance"
+            value={data ? (data.supplyInfo?.treasurySize || 'N/A') : 'Loading...'}
+            subtitle={
+              <>
+                DCR in treasury
+                <br />
+                Self-funded from block reward
+              </>
+            }
             icon={Wallet}
           />
           <MetricCard
             title="Supply Staked"
-            value={data?.supplyInfo?.stakedSupply || 'Loading...'}
-            subtitle="Stakeholders Rule"
+            value={data ? (data.supplyInfo?.stakedSupply || 'N/A') : 'Loading...'}
+            subtitle="DCR - Stakeholders Rule"
             icon={Lock}
+            trend={data?.supplyInfo?.stakedPercent ? { 
+              value: `${data.supplyInfo.stakedPercent.toFixed(1)}% of supply`, 
+              isPositive: true 
+            } : undefined}
           />
           <MetricCard
             title="Supply Mixed"
-            value={data?.supplyInfo?.mixedPercent || 'Loading...'}
+            value={data ? (data.supplyInfo?.mixedPercent || 'N/A') : 'Loading...'}
             subtitle="Privacy enhanced"
             icon={Shield}
             trend={{ value: "CoinShuffle++", isPositive: true }}
           />
           <MetricCard
             title="Exchange Rate"
-            value={data?.supplyInfo?.exchangeRate || 'Loading...'}
+            value={data ? (data.supplyInfo?.exchangeRate || 'N/A') : 'Loading...'}
             subtitle="USD per DCR"
             icon={DollarSign}
           />

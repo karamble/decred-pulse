@@ -450,25 +450,31 @@ func fetchBlockchainInfo() (*BlockchainInfo, error) {
 
 func fetchNetworkInfo() (*NetworkInfo, error) {
 	ctx := context.Background()
+
+	// Get peer count
+	peerCount := 0
 	peerInfo, err := rpcClient.GetPeerInfo(ctx)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		peerCount = len(peerInfo)
 	}
 
-	// Get network hash rate
-	info, err := rpcClient.GetBlockChainInfo(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// Get network difficulty and calculate hashrate - direct RPC method
+	hashrateStr := "N/A"
+	networkHashPS := float64(0)
 
-	// Calculate network hashrate (simplified)
-	hashrate := float64(info.Difficulty) * math.Pow(2, 32) / 300 // 5 min block time
-	hashrateStr := formatHashrate(hashrate)
+	difficulty, err := rpcClient.GetDifficulty(ctx)
+	if err == nil && difficulty > 0 {
+		// Calculate network hashrate from difficulty
+		// Formula: hashrate = difficulty * 2^32 / target_block_time
+		// For Decred, target block time is 5 minutes = 300 seconds
+		networkHashPS = difficulty * math.Pow(2, 32) / 300
+		hashrateStr = formatHashrate(networkHashPS)
+	}
 
 	return &NetworkInfo{
-		PeerCount:     len(peerInfo),
+		PeerCount:     peerCount,
 		Hashrate:      hashrateStr,
-		NetworkHashPS: hashrate,
+		NetworkHashPS: networkHashPS,
 	}, nil
 }
 
@@ -495,27 +501,76 @@ func fetchPeers() ([]Peer, error) {
 }
 
 func fetchSupplyInfo() (*SupplyInfo, error) {
-	// For supply info, we would typically call external APIs or calculate from blockchain
-	// For now, returning placeholder values
-	// In production, you'd integrate with dcrdata API or calculate from chain
-
 	ctx := context.Background()
-	info, err := rpcClient.GetBlockChainInfo(ctx)
-	if err != nil {
-		return nil, err
+
+	// Get real circulating supply from dcrd - direct RPC method
+	circulatingSupply := "N/A"
+	stakedSupply := "N/A"
+	stakedPercent := float64(0)
+	treasuryBalance := "N/A"
+
+	coinSupply, err := rpcClient.GetCoinSupply(ctx)
+	if err == nil && coinSupply > 0 {
+		// Convert atoms to DCR and format with commas
+		coinSupplyDCR := coinSupply.ToCoin()
+		circulatingSupply = formatDCRAmount(coinSupplyDCR)
+
+		// Calculate staked supply from ticket pool
+		ticketPoolValue, err := rpcClient.GetTicketPoolValue(ctx)
+		if err == nil && ticketPoolValue > 0 {
+			lockedDCR := ticketPoolValue.ToCoin()
+			stakedSupply = formatDCRAmount(lockedDCR)
+
+			if coinSupplyDCR > 0 {
+				stakedPercent = (lockedDCR / coinSupplyDCR) * 100
+			}
+		}
 	}
 
-	// Simplified calculation - in production use proper supply formulas
-	circulatingSupply := fmt.Sprintf("%.2fM", float64(info.Blocks)*1.5/1000000)
+	// Get treasury balance - direct RPC method
+	// Pass nil for hash (gets latest) and false for verbose
+	treasuryBalanceResult, err := rpcClient.GetTreasuryBalance(ctx, nil, false)
+	if err == nil && treasuryBalanceResult.Balance > 0 {
+		// Balance is in atoms (uint64), convert to DCR by dividing by 1e8
+		treasuryBalanceDCR := float64(treasuryBalanceResult.Balance) / 1e8
+		// Format with 2 decimal places and commas
+		treasuryBalance = formatDCRAmountWithDecimals(treasuryBalanceDCR, 2)
+	}
 
 	return &SupplyInfo{
 		CirculatingSupply: circulatingSupply,
-		StakedSupply:      "10.15M",     // Would calculate from ticket pool
-		StakedPercent:     59.4,         // Would calculate from actual data
-		ExchangeRate:      "$17.70",     // Would fetch from external API
-		TreasurySize:      "861.6K DCR", // Would query treasury address
-		MixedPercent:      "62%",        // Would query from mixer statistics
+		StakedSupply:      stakedSupply,
+		StakedPercent:     stakedPercent,
+		ExchangeRate:      "N/A", // Requires external API
+		TreasurySize:      treasuryBalance,
+		MixedPercent:      "N/A", // Requires mixer statistics
 	}, nil
+}
+
+// formatDCRAmount formats a DCR amount with commas and appropriate precision
+func formatDCRAmount(amount float64) string {
+	// Format with 0 decimal places for large amounts
+	intAmount := int64(amount)
+	return addCommas(intAmount)
+}
+
+// formatDCRAmountWithDecimals formats a DCR amount with commas and specified decimal places
+func formatDCRAmountWithDecimals(amount float64, decimals int) string {
+	// Split into integer and decimal parts
+	intPart := int64(amount)
+	decimalPart := amount - float64(intPart)
+
+	// Format integer part with commas
+	intStr := addCommas(intPart)
+
+	// Format decimal part
+	format := fmt.Sprintf("%%.%df", decimals)
+	fullStr := fmt.Sprintf(format, decimalPart)
+
+	// Extract just the decimal part (after the "0.")
+	decimalStr := fullStr[2:] // Skip "0."
+
+	return fmt.Sprintf("%s.%s", intStr, decimalStr)
 }
 
 // formatNumber formats a number with thousands separators
@@ -523,7 +578,7 @@ func formatNumber(n int64) string {
 	if n < 1000 {
 		return fmt.Sprintf("%d", n)
 	}
-	return fmt.Sprintf("%s", addCommas(n))
+	return addCommas(n)
 }
 
 // addCommas adds comma separators to a number
