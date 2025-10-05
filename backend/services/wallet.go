@@ -1,0 +1,519 @@
+// Copyright (c) 2015-2025 The Decred developers
+// Use of this source code is governed by an ISC
+// license that can be found in the LICENSE file.
+
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"decred-pulse-backend/rpc"
+	"decred-pulse-backend/types"
+	"decred-pulse-backend/utils"
+)
+
+var (
+	// Track wallet sync
+	prevWalletHeight int64
+	walletSyncMutex  sync.Mutex
+)
+
+func ParseWalletLogsForRescan() (bool, int64, error) {
+	// Path to wallet log file (mounted from dcrwallet-data volume)
+	logPath := "/wallet-data/logs/mainnet/dcrwallet.log"
+
+	// Check if log file exists
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		return false, 0, nil // No log file yet, wallet might be starting
+	}
+
+	// Read the log file
+	data, err := ioutil.ReadFile(logPath)
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to read wallet log: %w", err)
+	}
+
+	// Parse logs for rescan messages with timestamps: "2025-10-05 15:23:16.672 [INF] WLLT: Rescanning block range [414000, 415999]..."
+	// Regex to extract timestamp and block range
+	rescanRegex := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}).*Rescanning block range \[(\d+), (\d+)\]`)
+
+	lines := strings.Split(string(data), "\n")
+
+	// Check the most recent rescan message (from the end, last ~100 lines for performance)
+	startIndex := len(lines) - 100
+	if startIndex < 0 {
+		startIndex = 0
+	}
+
+	now := time.Now()
+	maxAge := 2 * time.Minute // Consider rescan messages older than 2 minutes as stale
+
+	for i := len(lines) - 1; i >= startIndex; i-- {
+		line := lines[i]
+		if matches := rescanRegex.FindStringSubmatch(line); matches != nil {
+			// Parse the timestamp from the log line
+			timestampStr := matches[1]
+			logTime, err := time.Parse("2006-01-02 15:04:05.000", timestampStr)
+			if err != nil {
+				log.Printf("Warning: Failed to parse log timestamp '%s': %v", timestampStr, err)
+				continue
+			}
+
+			// Check if the log entry is recent enough to be considered an active rescan
+			age := now.Sub(logTime)
+			if age > maxAge {
+				log.Printf("Rescan message found but is stale (age: %v, max: %v) - considering rescan as inactive", age, maxAge)
+				return false, 0, nil
+			}
+
+			// Extract the end block of the range being scanned
+			endBlock, err := strconv.ParseInt(matches[3], 10, 64)
+			if err == nil {
+				log.Printf("Active rescan detected: block %d (log age: %v)", endBlock, age)
+				return true, endBlock, nil
+			}
+		}
+	}
+
+	return false, 0, nil
+}
+
+func FetchWalletStatus() (*types.WalletStatus, error) {
+	// Use a longer timeout for wallet status to handle rescan scenarios
+	// During rescan, RPC calls can be slow but should still respond
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Get wallet info using getinfo
+	walletInfo, err := rpc.WalletClient.GetInfo(ctx)
+	if err != nil {
+		// If RPC fails, check if it's because of an active rescan
+		isRescanning, logScanHeight, logErr := ParseWalletLogsForRescan()
+		if logErr == nil && isRescanning {
+			// Wallet is busy rescanning, use log data
+			if rpc.DcrdClient != nil {
+				chainHeight, err := rpc.DcrdClient.GetBlockCount(ctx)
+				if err == nil {
+					syncProgress := (float64(logScanHeight) / float64(chainHeight)) * 100
+					return &types.WalletStatus{
+						Status:           "syncing",
+						SyncProgress:     syncProgress,
+						SyncHeight:       logScanHeight,
+						BestBlockHash:    "",
+						Version:          "unknown",
+						Unlocked:         true,
+						RescanInProgress: true,
+						SyncMessage:      fmt.Sprintf("Rescanning... %d/%d blocks (%.1f%%)", logScanHeight, chainHeight, syncProgress),
+					}, nil
+				}
+			}
+		}
+
+		return &types.WalletStatus{
+			Status:      "no_wallet",
+			SyncMessage: fmt.Sprintf("Wallet not available: %v", err),
+		}, nil
+	}
+
+	// Determine wallet status
+	status := "synced"
+	syncProgress := 100.0
+	syncMessage := "Fully synced"
+	rescanInProgress := false
+	var syncHeight int64 = 0
+	bestBlockHash := ""
+
+	// Get best block from wallet
+	bestHash, bestHeight, err := rpc.WalletClient.GetBestBlock(ctx)
+	if err == nil {
+		syncHeight = bestHeight
+		bestBlockHash = bestHash.String()
+
+		// Get current block count from dcrd for comparison
+		if rpc.DcrdClient != nil {
+			chainHeight, err := rpc.DcrdClient.GetBlockCount(ctx)
+			if err == nil {
+				walletHeight := bestHeight
+
+				// Calculate sync progress
+				// During rescan, wallet height changes rapidly through already-synced blocks
+				// Allow a buffer of 2 blocks to account for chain growth during sync
+				blocksBehind := chainHeight - walletHeight
+				if blocksBehind > 2 {
+					status = "syncing"
+					syncProgress = (float64(walletHeight) / float64(chainHeight)) * 100
+
+					// Calculate delta for sync message
+					walletSyncMutex.Lock()
+					deltaHeight := walletHeight - prevWalletHeight
+					prevWalletHeight = walletHeight
+					walletSyncMutex.Unlock()
+
+					if deltaHeight > 0 {
+						// If scanning more than 100 blocks per check (30s), likely a rescan
+						if deltaHeight > 100 {
+							syncMessage = fmt.Sprintf("Rescanning... %d/%d blocks (%.1f%%)", walletHeight, chainHeight, syncProgress)
+							rescanInProgress = true
+						} else {
+							syncMessage = fmt.Sprintf("Syncing... scanned %s blocks recently", utils.FormatNumber(deltaHeight))
+						}
+					} else {
+						syncMessage = fmt.Sprintf("Syncing... %d/%d blocks", walletHeight, chainHeight)
+					}
+					rescanInProgress = true
+				} else {
+					// Even if heights match, check if we were recently rescanning
+					walletSyncMutex.Lock()
+					deltaHeight := walletHeight - prevWalletHeight
+					if deltaHeight > 100 {
+						// Just finished a fast rescan
+						syncMessage = "Rescan completed, wallet fully synced"
+					}
+					prevWalletHeight = walletHeight
+					walletSyncMutex.Unlock()
+				}
+			}
+		}
+	} else {
+		status = "disconnected"
+		syncMessage = "Wallet not connected to dcrd"
+	}
+
+	// Check Docker logs for active rescan (especially for manual rescans via rescan button or xpub import)
+	// This is more reliable than RPC during intensive rescans
+	isRescanning, logScanHeight, logErr := ParseWalletLogsForRescan()
+	if logErr == nil && isRescanning {
+		// Get chain height for progress calculation
+		if rpc.DcrdClient != nil {
+			chainHeight, err := rpc.DcrdClient.GetBlockCount(ctx)
+			if err == nil {
+				// Only override status if the wallet is actually behind
+				// Allow a small buffer of 2 blocks to account for chain growth during sync
+				blocksBehind := chainHeight - logScanHeight
+				if blocksBehind > 2 {
+					status = "syncing"
+					rescanInProgress = true
+					syncHeight = logScanHeight
+					syncProgress = (float64(logScanHeight) / float64(chainHeight)) * 100
+					syncMessage = fmt.Sprintf("Rescanning... %d/%d blocks (%.1f%%)", logScanHeight, chainHeight, syncProgress)
+					log.Printf("Rescan detected from logs: block %d / %d (%.1f%%)", logScanHeight, chainHeight, syncProgress)
+				} else {
+					log.Printf("Rescan message found in logs but wallet is at chain tip (%d/%d, %d blocks behind) - rescan complete", logScanHeight, chainHeight, blocksBehind)
+				}
+			}
+		}
+	}
+
+	return &types.WalletStatus{
+		Status:           status,
+		SyncProgress:     syncProgress,
+		SyncHeight:       syncHeight,
+		BestBlockHash:    bestBlockHash,
+		Version:          fmt.Sprintf("%d.%d.%d", walletInfo.Version, 0, 0),
+		Unlocked:         true, // Assume unlocked since we auto-unlock
+		RescanInProgress: rescanInProgress,
+		SyncMessage:      syncMessage,
+	}, nil
+}
+
+func FetchWalletDashboardData() (*types.WalletDashboardData, error) {
+	ctx := context.Background()
+	return FetchWalletDashboardDataWithContext(ctx)
+}
+
+func FetchWalletDashboardDataWithContext(ctx context.Context) (*types.WalletDashboardData, error) {
+	walletStatus, err := FetchWalletStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	accountInfo := &types.AccountInfo{}
+	accounts := []types.AccountInfo{}
+
+	// Fetch data with timeout protection - use channels to respect context
+	type accountResult struct {
+		data *types.AccountInfo
+		err  error
+	}
+	type accountsResult struct {
+		data []types.AccountInfo
+		err  error
+	}
+
+	accountChan := make(chan accountResult, 1)
+	accountsChan := make(chan accountsResult, 1)
+
+	go func() {
+		info, err := FetchAccountInfoWithContext(ctx)
+		accountChan <- accountResult{info, err}
+	}()
+
+	go func() {
+		accts, err := FetchAllAccounts(ctx)
+		accountsChan <- accountsResult{accts, err}
+	}()
+
+	select {
+	case res := <-accountChan:
+		if res.err != nil {
+			log.Printf("Warning: Failed to fetch account info: %v", res.err)
+		} else {
+			accountInfo = res.data
+		}
+	case <-ctx.Done():
+		log.Printf("Warning: Account info fetch cancelled: %v", ctx.Err())
+	}
+
+	select {
+	case res := <-accountsChan:
+		if res.err != nil {
+			log.Printf("Warning: Failed to fetch accounts: %v", res.err)
+		} else {
+			accounts = res.data
+		}
+	case <-ctx.Done():
+		log.Printf("Warning: Accounts fetch cancelled: %v", ctx.Err())
+	}
+
+	return &types.WalletDashboardData{
+		WalletStatus: *walletStatus,
+		AccountInfo:  *accountInfo,
+		Accounts:     accounts,
+		LastUpdate:   time.Now(),
+	}, nil
+}
+
+func FetchAccountInfo() (*types.AccountInfo, error) {
+	return FetchAccountInfoWithContext(context.Background())
+}
+
+func FetchAccountInfoWithContext(ctx context.Context) (*types.AccountInfo, error) {
+	// Get balance using getbalance (no arguments for default account total balance)
+	result, err := rpc.WalletClient.RawRequest(ctx, "getbalance", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get balance: %v", err)
+		return &types.AccountInfo{
+			AccountName:        "default",
+			TotalBalance:       0,
+			SpendableBalance:   0,
+			ImmatureBalance:    0,
+			UnconfirmedBalance: 0,
+			AccountNumber:      0,
+		}, nil
+	}
+
+	// Parse the balance response structure
+	// getbalance returns: {"balances":[{account info},...], "blockhash":"..."}
+	type AccountBalance struct {
+		AccountName             string  `json:"accountname"`
+		ImmatureCoinbaseRewards float64 `json:"immaturecoinbaserewards"`
+		ImmatureStakeGeneration float64 `json:"immaturestakegeneration"`
+		LockedByTickets         float64 `json:"lockedbytickets"`
+		Spendable               float64 `json:"spendable"`
+		Total                   float64 `json:"total"`
+		Unconfirmed             float64 `json:"unconfirmed"`
+		VotingAuthority         float64 `json:"votingauthority"`
+	}
+	type BalanceResponse struct {
+		Balances  []AccountBalance `json:"balances"`
+		BlockHash string           `json:"blockhash"`
+	}
+
+	var balanceResp BalanceResponse
+	if err := json.Unmarshal(result, &balanceResp); err != nil {
+		log.Printf("Warning: Failed to unmarshal balance response: %v", err)
+		return &types.AccountInfo{
+			AccountName:        "default",
+			TotalBalance:       0,
+			SpendableBalance:   0,
+			ImmatureBalance:    0,
+			UnconfirmedBalance: 0,
+			AccountNumber:      0,
+		}, nil
+	}
+
+	// Sum balances across all accounts (or use first account)
+	total := 0.0
+	spendable := 0.0
+	immature := 0.0
+	unconfirmed := 0.0
+
+	for _, acct := range balanceResp.Balances {
+		total += acct.Total
+		spendable += acct.Spendable
+		immature += acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration
+		unconfirmed += acct.Unconfirmed
+	}
+
+	return &types.AccountInfo{
+		AccountName:        "default",
+		TotalBalance:       total,
+		SpendableBalance:   spendable,
+		ImmatureBalance:    immature,
+		UnconfirmedBalance: unconfirmed,
+		AccountNumber:      0,
+	}, nil
+}
+
+func FetchAllAccounts(ctx context.Context) ([]types.AccountInfo, error) {
+	// Get all accounts and their balances using getbalance RPC
+	result, err := rpc.WalletClient.RawRequest(ctx, "getbalance", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get accounts: %v", err)
+		return []types.AccountInfo{}, nil
+	}
+
+	// Parse the balance response structure
+	type AccountBalance struct {
+		AccountName             string  `json:"accountname"`
+		ImmatureCoinbaseRewards float64 `json:"immaturecoinbaserewards"`
+		ImmatureStakeGeneration float64 `json:"immaturestakegeneration"`
+		LockedByTickets         float64 `json:"lockedbytickets"`
+		Spendable               float64 `json:"spendable"`
+		Total                   float64 `json:"total"`
+		Unconfirmed             float64 `json:"unconfirmed"`
+		VotingAuthority         float64 `json:"votingauthority"`
+		AccountNumber           uint32  `json:"accountnumber"`
+	}
+	type BalanceResponse struct {
+		Balances  []AccountBalance `json:"balances"`
+		BlockHash string           `json:"blockhash"`
+	}
+
+	var balanceResp BalanceResponse
+	if err := json.Unmarshal(result, &balanceResp); err != nil {
+		log.Printf("Warning: Failed to unmarshal accounts: %v", err)
+		return []types.AccountInfo{}, nil
+	}
+
+	accounts := make([]types.AccountInfo, 0, len(balanceResp.Balances))
+	for _, acct := range balanceResp.Balances {
+		accounts = append(accounts, types.AccountInfo{
+			AccountName:        acct.AccountName,
+			TotalBalance:       acct.Total,
+			SpendableBalance:   acct.Spendable,
+			ImmatureBalance:    acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration,
+			UnconfirmedBalance: acct.Unconfirmed,
+			AccountNumber:      acct.AccountNumber,
+		})
+	}
+
+	return accounts, nil
+}
+
+func FetchTransactions() ([]types.Transaction, error) {
+	return FetchTransactionsWithContext(context.Background())
+}
+
+func FetchTransactionsWithContext(ctx context.Context) ([]types.Transaction, error) {
+	// Get recent transactions via raw RPC
+	// listtransactions returns empty array if no xpub imported
+	result, err := rpc.WalletClient.RawRequest(ctx, "listtransactions", []json.RawMessage{
+		json.RawMessage(`"*"`),
+		json.RawMessage(`50`),
+		json.RawMessage(`0`),
+	})
+	if err != nil {
+		log.Printf("Warning: Failed to list transactions: %v", err)
+		return []types.Transaction{}, nil
+	}
+
+	// Parse the result
+	var rawTxList []map[string]interface{}
+	if err := json.Unmarshal(result, &rawTxList); err != nil {
+		log.Printf("Warning: Failed to unmarshal transactions: %v", err)
+		return []types.Transaction{}, nil
+	}
+
+	transactions := make([]types.Transaction, 0, len(rawTxList))
+	for _, tx := range rawTxList {
+		txType := "receive"
+		amount, _ := tx["amount"].(float64)
+		if amount < 0 {
+			txType = "send"
+		}
+		if category, ok := tx["category"].(string); ok {
+			if category == "ticket" {
+				txType = "ticket"
+			} else if category == "vote" {
+				txType = "vote"
+			}
+		}
+
+		txid, _ := tx["txid"].(string)
+		confirmations, _ := tx["confirmations"].(float64)
+		txTime, _ := tx["time"].(float64)
+		fee, _ := tx["fee"].(float64)
+		comment, _ := tx["comment"].(string)
+
+		transactions = append(transactions, types.Transaction{
+			TxID:          txid,
+			Amount:        amount,
+			Fee:           fee,
+			Confirmations: int64(confirmations),
+			Time:          time.Unix(int64(txTime), 0),
+			Type:          txType,
+			Comment:       comment,
+		})
+	}
+
+	return transactions, nil
+}
+
+func FetchAddresses() ([]types.Address, error) {
+	return FetchAddressesWithContext(context.Background())
+}
+
+func FetchAddressesWithContext(ctx context.Context) ([]types.Address, error) {
+	// List addresses via raw RPC - only return addresses with funds (not empty)
+	// This prevents returning 40k+ empty addresses
+	result, err := rpc.WalletClient.RawRequest(ctx, "listreceivedbyaddress", []json.RawMessage{
+		json.RawMessage(`0`),     // minconf
+		json.RawMessage(`false`), // include empty = false (only show addresses with funds)
+	})
+	if err != nil {
+		log.Printf("Warning: Failed to list addresses: %v", err)
+		return []types.Address{}, nil
+	}
+
+	// Parse the result
+	var rawAddrList []map[string]interface{}
+	if err := json.Unmarshal(result, &rawAddrList); err != nil {
+		log.Printf("Warning: Failed to unmarshal addresses: %v", err)
+		return []types.Address{}, nil
+	}
+
+	// Limit to 100 addresses max to prevent huge payloads
+	maxAddresses := 100
+	if len(rawAddrList) > maxAddresses {
+		log.Printf("Warning: Wallet has %d addresses with funds, limiting to %d", len(rawAddrList), maxAddresses)
+		rawAddrList = rawAddrList[:maxAddresses]
+	}
+
+	addresses := make([]types.Address, 0, len(rawAddrList))
+	for _, addr := range rawAddrList {
+		address, _ := addr["address"].(string)
+		account, _ := addr["account"].(string)
+		amount, _ := addr["amount"].(float64)
+
+		addresses = append(addresses, types.Address{
+			Address: address,
+			Account: account,
+			Used:    amount > 0, // Has received funds
+			Path:    "",         // Would need to query separately
+		})
+	}
+
+	log.Printf("Returning %d addresses with funds", len(addresses))
+	return addresses, nil
+}
