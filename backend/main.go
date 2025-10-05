@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,10 +75,14 @@ type NetworkInfo struct {
 }
 
 type Peer struct {
-	ID       int    `json:"id"`
-	Address  string `json:"address"`
-	Protocol string `json:"protocol"`
-	Latency  string `json:"latency"`
+	ID         int    `json:"id"`
+	Address    string `json:"address"`
+	Protocol   string `json:"protocol"`
+	Latency    string `json:"latency"`
+	ConnTime   string `json:"connTime"`
+	Traffic    string `json:"traffic"`
+	Version    string `json:"version"`
+	IsSyncNode bool   `json:"isSyncNode"`
 }
 
 type SupplyInfo struct {
@@ -486,18 +491,92 @@ func fetchPeers() ([]Peer, error) {
 	}
 
 	peers := make([]Peer, 0, len(peerInfo))
+	now := time.Now().Unix()
+
 	for i, p := range peerInfo {
-		latency := fmt.Sprintf("%.0fms", p.PingTime*1000)
+		// Convert pingtime from microseconds to milliseconds
+		latency := fmt.Sprintf("%.0fms", float64(p.PingTime)/1000)
+
+		// Calculate connection time
+		connDuration := now - p.ConnTime
+		connTime := formatDuration(connDuration)
+
+		// Calculate total traffic in MB
+		totalBytes := p.BytesSent + p.BytesRecv
+		traffic := formatTraffic(totalBytes)
+
+		// Extract version from subver string (e.g., "/dcrwire:1.0.0/dcrd:2.0.5/" -> "2.0.5")
+		version := extractDcrdVersion(p.SubVer)
 
 		peers = append(peers, Peer{
-			ID:       i + 1,
-			Address:  p.Addr,
-			Protocol: "TCP",
-			Latency:  latency,
+			ID:         i + 1,
+			Address:    p.Addr,
+			Protocol:   "TCP",
+			Latency:    latency,
+			ConnTime:   connTime,
+			Traffic:    traffic,
+			Version:    version,
+			IsSyncNode: p.SyncNode,
 		})
 	}
 
 	return peers, nil
+}
+
+// formatDuration formats a duration in seconds to a human-readable string
+func formatDuration(seconds int64) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	hours := minutes / 60
+	remainingMinutes := minutes % 60
+	if hours < 24 {
+		if remainingMinutes == 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+		return fmt.Sprintf("%dh %dm", hours, remainingMinutes)
+	}
+	days := hours / 24
+	remainingHours := hours % 24
+	if remainingHours == 0 {
+		return fmt.Sprintf("%dd", days)
+	}
+	return fmt.Sprintf("%dd %dh", days, remainingHours)
+}
+
+// formatTraffic formats bytes to a human-readable traffic string
+func formatTraffic(bytes uint64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	kb := float64(bytes) / 1024
+	if kb < 1024 {
+		return fmt.Sprintf("%.1f KB", kb)
+	}
+	mb := kb / 1024
+	if mb < 1024 {
+		return fmt.Sprintf("%.2f MB", mb)
+	}
+	gb := mb / 1024
+	return fmt.Sprintf("%.2f GB", gb)
+}
+
+// extractDcrdVersion extracts the dcrd version from subver string
+func extractDcrdVersion(subver string) string {
+	// subver format: "/dcrwire:1.0.0/dcrd:2.0.5/"
+	if idx := strings.Index(subver, "dcrd:"); idx != -1 {
+		start := idx + 5
+		end := strings.Index(subver[start:], "/")
+		if end != -1 {
+			return subver[start : start+end]
+		}
+		return subver[start:]
+	}
+	return "unknown"
 }
 
 func fetchSupplyInfo() (*SupplyInfo, error) {
