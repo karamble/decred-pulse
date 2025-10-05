@@ -41,6 +41,10 @@ export interface Peer {
   address: string;
   protocol: string;
   latency: string;
+  connTime: string;
+  traffic: string;
+  version: string;
+  isSyncNode: boolean;
 }
 
 export interface SupplyInfo {
