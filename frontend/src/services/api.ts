@@ -8,7 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 25000, // 25 seconds to accommodate wallet rescans
   headers: {
     'Content-Type': 'application/json',
   },
@@ -128,6 +128,88 @@ export const connectRPC = async (config: RPCConnectionRequest): Promise<RPCConne
 
 export const checkHealth = async (): Promise<any> => {
   const response = await api.get('/health');
+  return response.data;
+};
+
+// Wallet Types
+export interface WalletStatus {
+  status: string;
+  syncProgress: number;
+  syncHeight: number;
+  bestBlockHash: string;
+  version: string;
+  unlocked: boolean;
+  rescanInProgress: boolean;
+  syncMessage: string;
+}
+
+export interface AccountInfo {
+  accountName: string;
+  totalBalance: number;
+  spendableBalance: number;
+  immatureBalance: number;
+  unconfirmedBalance: number;
+  accountNumber: number;
+}
+
+export interface WalletTransaction {
+  txid: string;
+  amount: number;
+  fee: number;
+  confirmations: number;
+  time: string;
+  type: string;
+  comment: string;
+}
+
+export interface WalletAddress {
+  address: string;
+  account: string;
+  used: boolean;
+  path: string;
+}
+
+export interface WalletDashboardData {
+  walletStatus: WalletStatus;
+  accountInfo: AccountInfo;
+  accounts: AccountInfo[];
+  lastUpdate: string;
+}
+
+export interface ImportXpubRequest {
+  xpub: string;
+  accountName: string;
+  rescan: boolean;
+}
+
+export interface ImportXpubResponse {
+  success: boolean;
+  message: string;
+  accountNum?: number;
+}
+
+// Wallet API Functions
+export const getWalletStatus = async (): Promise<WalletStatus> => {
+  const response = await api.get<WalletStatus>('/wallet/status');
+  return response.data;
+};
+
+export const getWalletDashboard = async (): Promise<WalletDashboardData> => {
+  const response = await api.get<WalletDashboardData>('/wallet/dashboard');
+  return response.data;
+};
+
+export const importXpub = async (xpub: string, accountName: string, rescan: boolean): Promise<ImportXpubResponse> => {
+  const response = await api.post<ImportXpubResponse>('/wallet/importxpub', {
+    xpub,
+    accountName,
+    rescan
+  });
+  return response.data;
+};
+
+export const triggerRescan = async (): Promise<any> => {
+  const response = await api.post('/wallet/rescan', { beginHeight: 0 });
   return response.data;
 };
 

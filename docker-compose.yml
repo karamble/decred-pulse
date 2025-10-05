@@ -29,6 +29,37 @@ services:
       retries: 5
       start_period: 120s
 
+  dcrwallet:
+    build:
+      context: ./dcrwallet
+      args:
+        DCRWALLET_VERSION: ${DCRWALLET_VERSION:-master}
+    container_name: decred-pulse-dcrwallet
+    ports:
+      - "9110:9110"  # RPC port
+      - "9111:9111"  # gRPC port
+    volumes:
+      - dcrwallet-data:/home/dcrwallet/.dcrwallet
+      - dcrd-certs:/certs:ro  # Read-only access to dcrd's certs
+    environment:
+      - DCRWALLET_RPC_USER=${DCRWALLET_RPC_USER:-dcrwallet}
+      - DCRWALLET_RPC_PASS=${DCRWALLET_RPC_PASS:-dcrwalletpass}
+      - DCRD_RPC_USER=${DCRD_RPC_USER:-decred}
+      - DCRD_RPC_PASS=${DCRD_RPC_PASS:-decredpass}
+      - DCRD_RPC_HOST=dcrd
+    depends_on:
+      dcrd:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - decred-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "dcrctl --wallet --rpcuser=$${DCRWALLET_RPC_USER} --rpcpass=$${DCRWALLET_RPC_PASS} --rpcserver=127.0.0.1:9110 --rpccert=/certs/rpc.cert walletinfo || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
   backend:
     build: ./backend
     container_name: decred-pulse-backend
@@ -36,6 +67,7 @@ services:
       - "8080:8080"
     volumes:
       - dcrd-certs:/certs:ro
+      - dcrwallet-data:/wallet-data:ro  # Read-only access to wallet logs
     environment:
       - PORT=8080
       - DCRD_RPC_HOST=dcrd
@@ -43,8 +75,15 @@ services:
       - DCRD_RPC_USER=${DCRD_RPC_USER:-decred}
       - DCRD_RPC_PASS=${DCRD_RPC_PASS:-decredpass}
       - DCRD_RPC_CERT=/certs/rpc.cert
+      - DCRWALLET_RPC_HOST=dcrwallet
+      - DCRWALLET_RPC_PORT=9110
+      - DCRWALLET_RPC_USER=${DCRWALLET_RPC_USER:-dcrwallet}
+      - DCRWALLET_RPC_PASS=${DCRWALLET_RPC_PASS:-dcrwalletpass}
+      - DCRWALLET_RPC_CERT=/certs/rpc.cert
     depends_on:
       dcrd:
+        condition: service_healthy
+      dcrwallet:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -72,4 +111,5 @@ volumes:
     driver: local
   dcrd-certs:
     driver: local
-
+  dcrwallet-data:
+    driver: local
