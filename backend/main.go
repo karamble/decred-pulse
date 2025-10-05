@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/decred/dcrd/rpcclient/v8"
@@ -22,6 +23,11 @@ import (
 
 var (
 	rpcClient *rpcclient.Client
+
+	// Track previous sync values to calculate delta
+	prevHeaders int64
+	prevBlocks  int64
+	syncMutex   sync.Mutex
 )
 
 // Config holds the RPC connection configuration
@@ -40,6 +46,8 @@ type DashboardData struct {
 	NetworkInfo    NetworkInfo    `json:"networkInfo"`
 	Peers          []Peer         `json:"peers"`
 	SupplyInfo     SupplyInfo     `json:"supplyInfo"`
+	StakingInfo    StakingInfo    `json:"stakingInfo"`
+	MempoolInfo    MempoolInfo    `json:"mempoolInfo"`
 	LastUpdate     time.Time      `json:"lastUpdate"`
 }
 
@@ -47,6 +55,8 @@ type NodeStatus struct {
 	Status       string  `json:"status"`
 	SyncProgress float64 `json:"syncProgress"`
 	Version      string  `json:"version"`
+	SyncPhase    string  `json:"syncPhase"`   // "headers" or "blocks"
+	SyncMessage  string  `json:"syncMessage"` // e.g., "Processed 36,000 headers in the last 30 seconds"
 }
 
 type BlockchainInfo struct {
@@ -77,6 +87,27 @@ type SupplyInfo struct {
 	ExchangeRate      string  `json:"exchangeRate"`
 	TreasurySize      string  `json:"treasurySize"`
 	MixedPercent      string  `json:"mixedPercent"`
+}
+
+type StakingInfo struct {
+	TicketPrice       float64 `json:"ticketPrice"`
+	PoolSize          uint32  `json:"poolSize"`
+	LockedDCR         float64 `json:"lockedDCR"`
+	ParticipationRate float64 `json:"participationRate"`
+	AllMempoolTix     uint32  `json:"allMempoolTix"`
+	Immature          uint32  `json:"immature"`
+	Live              uint32  `json:"live"`
+	Voted             uint32  `json:"voted"`
+	Missed            uint32  `json:"missed"`
+	Revoked           uint32  `json:"revoked"`
+}
+
+type MempoolInfo struct {
+	Size           uint64  `json:"size"`
+	Bytes          uint64  `json:"bytes"`
+	TxCount        int     `json:"txCount"`
+	TotalFee       float64 `json:"totalFee"`
+	AverageFeeRate float64 `json:"averageFeeRate"`
 }
 
 type RPCConnectionRequest struct {
@@ -268,12 +299,24 @@ func fetchDashboardData() (*DashboardData, error) {
 		return nil, err
 	}
 
+	stakingInfo, err := fetchStakingInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	mempoolInfo, err := fetchMempoolInfo()
+	if err != nil {
+		return nil, err
+	}
+
 	return &DashboardData{
 		NodeStatus:     *nodeStatus,
 		BlockchainInfo: *blockchainInfo,
 		NetworkInfo:    *networkInfo,
 		Peers:          peers,
 		SupplyInfo:     *supplyInfo,
+		StakingInfo:    *stakingInfo,
+		MempoolInfo:    *mempoolInfo,
 		LastUpdate:     time.Now(),
 	}, nil
 }
@@ -281,10 +324,10 @@ func fetchDashboardData() (*DashboardData, error) {
 func fetchNodeStatus() (*NodeStatus, error) {
 	ctx := context.Background()
 
-	// Get basic node info for version
-	info, err := rpcClient.GetInfo(ctx)
+	// Get version info using version command
+	versionInfo, err := rpcClient.Version(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get version: %v", err)
 	}
 
 	// Get blockchain info for accurate sync status
@@ -294,29 +337,69 @@ func fetchNodeStatus() (*NodeStatus, error) {
 	}
 
 	// Debug logging
-	log.Printf("Blockchain sync status - InitialBlockDownload: %v, Blocks: %d, SyncHeight: %d, VerificationProgress: %f",
-		chainInfo.InitialBlockDownload, chainInfo.Blocks, chainInfo.SyncHeight, chainInfo.VerificationProgress)
+	log.Printf("Blockchain sync status - InitialBlockDownload: %v, Blocks: %d, Headers: %d, SyncHeight: %d, VerificationProgress: %f",
+		chainInfo.InitialBlockDownload, chainInfo.Blocks, chainInfo.Headers, chainInfo.SyncHeight, chainInfo.VerificationProgress)
 
 	// Calculate sync progress based on actual blockchain sync
 	var syncProgress float64
 	var status string
+	var syncPhase string
+	var syncMessage string
+
+	// Thread-safe access to previous values
+	syncMutex.Lock()
+	currentHeaders := chainInfo.Headers
+	currentBlocks := chainInfo.Blocks
+	deltaHeaders := currentHeaders - prevHeaders
+	deltaBlocks := currentBlocks - prevBlocks
+	prevHeaders = currentHeaders
+	prevBlocks = currentBlocks
+	syncMutex.Unlock()
 
 	if chainInfo.InitialBlockDownload {
 		// Node is still syncing
 		status = "syncing"
 
-		// Use verification progress if available, otherwise calculate from blocks/syncheight
+		// Determine sync phase: headers or blocks
+		if chainInfo.Blocks == 0 && chainInfo.Headers > 0 {
+			// Syncing headers
+			syncPhase = "headers"
+			if chainInfo.SyncHeight > 0 {
+				syncProgress = (float64(chainInfo.Headers) / float64(chainInfo.SyncHeight)) * 100
+			}
+			if deltaHeaders > 0 {
+				syncMessage = fmt.Sprintf("Processed %s headers in the last 30 seconds", formatNumber(deltaHeaders))
+			} else {
+				syncMessage = "Syncing headers..."
+			}
+		} else if chainInfo.Blocks > 0 {
+			// Syncing blocks
+			syncPhase = "blocks"
+			if chainInfo.SyncHeight > 0 {
+				syncProgress = (float64(chainInfo.Blocks) / float64(chainInfo.SyncHeight)) * 100
+			}
+			if deltaBlocks > 0 {
+				syncMessage = fmt.Sprintf("Processed %s blocks in the last 30 seconds", formatNumber(deltaBlocks))
+			} else {
+				syncMessage = "Syncing blocks..."
+			}
+		} else {
+			// Initial state
+			syncPhase = "starting"
+			syncMessage = "Starting sync..."
+			syncProgress = 0
+		}
+
+		// Use verification progress if available and more accurate
 		if chainInfo.VerificationProgress > 0 {
 			syncProgress = chainInfo.VerificationProgress * 100
-		} else if chainInfo.SyncHeight > 0 {
-			syncProgress = (float64(chainInfo.Blocks) / float64(chainInfo.SyncHeight)) * 100
-		} else {
-			syncProgress = 0
 		}
 	} else {
 		// Node is fully synced
 		status = "running"
 		syncProgress = 100.0
+		syncPhase = "synced"
+		syncMessage = "Fully synced"
 	}
 
 	// Ensure progress is between 0 and 100
@@ -329,7 +412,9 @@ func fetchNodeStatus() (*NodeStatus, error) {
 	return &NodeStatus{
 		Status:       status,
 		SyncProgress: syncProgress,
-		Version:      fmt.Sprintf("v%d.%d.%d", info.Version/1000000, (info.Version/10000)%100, (info.Version/100)%100),
+		Version:      fmt.Sprintf("%d.%d.%d", versionInfo["dcrd"].Major, versionInfo["dcrd"].Minor, versionInfo["dcrd"].Patch),
+		SyncPhase:    syncPhase,
+		SyncMessage:  syncMessage,
 	}, nil
 }
 
@@ -430,6 +515,112 @@ func fetchSupplyInfo() (*SupplyInfo, error) {
 		ExchangeRate:      "$17.70",     // Would fetch from external API
 		TreasurySize:      "861.6K DCR", // Would query treasury address
 		MixedPercent:      "62%",        // Would query from mixer statistics
+	}, nil
+}
+
+// formatNumber formats a number with thousands separators
+func formatNumber(n int64) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	return fmt.Sprintf("%s", addCommas(n))
+}
+
+// addCommas adds comma separators to a number
+func addCommas(n int64) string {
+	str := fmt.Sprintf("%d", n)
+	if len(str) <= 3 {
+		return str
+	}
+
+	var result string
+	for i, digit := range str {
+		if i > 0 && (len(str)-i)%3 == 0 {
+			result += ","
+		}
+		result += string(digit)
+	}
+	return result
+}
+
+func fetchStakingInfo() (*StakingInfo, error) {
+	ctx := context.Background()
+
+	// Get stake difficulty (ticket price) - direct RPC method
+	stakeDiff, err := rpcClient.GetStakeDifficulty(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stake difficulty: %v", err)
+	}
+	ticketPrice := stakeDiff.CurrentStakeDifficulty
+
+	// Get live tickets from pool - direct RPC method
+	// LiveTickets returns []*chainhash.Hash directly
+	liveTickets, err := rpcClient.LiveTickets(ctx)
+	poolSize := uint32(0)
+	if err == nil && liveTickets != nil {
+		// Count the actual number of live tickets
+		poolSize = uint32(len(liveTickets))
+	}
+
+	// Get ticket pool value (total locked DCR) - direct RPC method
+	// Returns dcrutil.Amount which needs to be converted to float64 DCR
+	lockedDCR := float64(0)
+	poolValue, err := rpcClient.GetTicketPoolValue(ctx)
+	if err == nil {
+		lockedDCR = poolValue.ToCoin()
+	}
+
+	// Get total coin supply for participation rate calculation - direct RPC method
+	// Returns dcrutil.Amount which needs to be converted to float64 DCR
+	participationRate := float64(0)
+	coinSupply, err := rpcClient.GetCoinSupply(ctx)
+	if err == nil && coinSupply > 0 {
+		// Calculate participation rate as percentage of total supply
+		coinSupplyDCR := coinSupply.ToCoin()
+		participationRate = (lockedDCR / coinSupplyDCR) * 100
+	}
+
+	return &StakingInfo{
+		TicketPrice:       ticketPrice,
+		PoolSize:          poolSize,
+		LockedDCR:         lockedDCR,
+		ParticipationRate: participationRate,
+		AllMempoolTix:     0, // Would need livetickets/missedtickets commands
+		Immature:          0, // Not available from dcrd alone
+		Live:              poolSize,
+		Voted:             0, // Would need block analysis
+		Missed:            0, // Would need missedtickets command
+		Revoked:           0, // Would need block analysis
+	}, nil
+}
+
+func fetchMempoolInfo() (*MempoolInfo, error) {
+	ctx := context.Background()
+
+	// Get raw mempool - this is a standard method available in rpcclient
+	hashes, err := rpcClient.GetRawMempool(ctx, "false")
+	if err != nil {
+		// If mempool query fails (e.g., during sync), return empty mempool
+		return &MempoolInfo{
+			Size:           0,
+			Bytes:          0,
+			TxCount:        0,
+			TotalFee:       0,
+			AverageFeeRate: 0,
+		}, nil
+	}
+
+	// Count transactions - this is the only real data we have
+	txCount := len(hashes)
+
+	// We don't have access to actual size and fees without querying each transaction
+	// Show 0 instead of estimates
+	return &MempoolInfo{
+		Size:           uint64(txCount),
+		Bytes:          0,
+		TxCount:        txCount,
+		TotalFee:       0,
+		AverageFeeRate: 0,
 	}, nil
 }
 

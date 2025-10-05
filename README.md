@@ -98,7 +98,7 @@ make status   # Check status
 make logs     # View logs
 ```
 
-See [DOCKER_SETUP.md](DOCKER_SETUP.md) for complete Docker documentation.
+See [DOCKER_SETUP.md](docs/DOCKER_SETUP.md) for complete Docker documentation.
 
 ### Option B: Manual Setup (External dcrd)
 
@@ -319,7 +319,9 @@ See `dcrd/README.md` for detailed build documentation.
 - `dcrd.conf` - dcrd configuration (mounted into container)
 - `env.example` - Environment variables template
 - `Makefile` - Helper commands
-- `DOCKER_SETUP.md` - Complete Docker documentation
+- `docs/DOCKER_SETUP.md` - Complete Docker documentation
+- `docs/QUICKSTART.md` - Quick start guide
+- `docs/BUILDING_FROM_SOURCE.md` - Building dcrd from source
 
 ### Initial Sync
 

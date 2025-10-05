@@ -18,6 +18,8 @@ export interface NodeStatus {
   status: string;
   syncProgress: number;
   version: string;
+  syncPhase: string;
+  syncMessage: string;
 }
 
 export interface BlockchainInfo {
@@ -50,12 +52,35 @@ export interface SupplyInfo {
   mixedPercent: string;
 }
 
+export interface StakingInfo {
+  ticketPrice: number;
+  poolSize: number;
+  lockedDCR: number;
+  participationRate: number;
+  allMempoolTix: number;
+  immature: number;
+  live: number;
+  voted: number;
+  missed: number;
+  revoked: number;
+}
+
+export interface MempoolInfo {
+  size: number;
+  bytes: number;
+  txCount: number;
+  totalFee: number;
+  averageFeeRate: number;
+}
+
 export interface DashboardData {
   nodeStatus: NodeStatus;
   blockchainInfo: BlockchainInfo;
   networkInfo: NetworkInfo;
   peers: Peer[];
   supplyInfo: SupplyInfo;
+  stakingInfo: StakingInfo;
+  mempoolInfo: MempoolInfo;
   lastUpdate: string;
 }
 

@@ -1,5 +1,8 @@
 .PHONY: help start stop restart logs logs-dcrd logs-backend logs-frontend build clean status shell-dcrd shell-backend backup restore
 
+# Force bash shell for bash-specific syntax (needed for clean target)
+SHELL := /bin/bash
+
 # Load environment variables from .env file if it exists
 ifneq (,$(wildcard .env))
     include .env

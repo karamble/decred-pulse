@@ -11,7 +11,8 @@ import { NodeStatus } from './components/NodeStatus';
 import { MetricCard } from './components/MetricCard';
 import { BlockchainInfo } from './components/BlockchainInfo';
 import { PeersList } from './components/PeersList';
-import { RPCConnection } from './components/RPCConnection';
+import { StakingStats } from './components/StakingStats';
+import { MempoolActivity } from './components/MempoolActivity';
 import { getDashboardData, DashboardData } from './services/api';
 
 function App() {
@@ -42,11 +43,6 @@ function App() {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleRPCConnect = () => {
-    setLoading(true);
-    setTimeout(fetchData, 1000); // Give backend time to establish connection
-  };
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -106,6 +102,7 @@ function App() {
             status={data.nodeStatus.status as any} 
             syncProgress={data.nodeStatus.syncProgress}
             version={data.nodeStatus.version}
+            syncMessage={data.nodeStatus.syncMessage}
           />
         )}
 
@@ -170,7 +167,12 @@ function App() {
         {/* Details Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <BlockchainInfo data={data?.blockchainInfo} />
-          <RPCConnection onConnect={handleRPCConnect} />
+          <StakingStats data={data?.stakingInfo} />
+        </div>
+
+        {/* Additional Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <MempoolActivity data={data?.mempoolInfo} />
         </div>
 
         {/* Peers List */}

@@ -8,9 +8,10 @@ interface NodeStatusProps {
   status: 'running' | 'syncing' | 'stopped';
   syncProgress?: number;
   version?: string;
+  syncMessage?: string;
 }
 
-export const NodeStatus = ({ status, syncProgress = 0, version }: NodeStatusProps) => {
+export const NodeStatus = ({ status, syncProgress = 0, version, syncMessage }: NodeStatusProps) => {
   const getStatusConfig = () => {
     switch (status) {
       case 'running':
@@ -65,7 +66,7 @@ export const NodeStatus = ({ status, syncProgress = 0, version }: NodeStatusProp
       {status === 'syncing' && (
         <div className="mt-6 space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground font-medium">Blockchain Sync Progress</span>
+            <span className="text-muted-foreground font-medium">{syncMessage || 'Blockchain Sync Progress'}</span>
             <span className="font-bold text-lg">{syncProgress.toFixed(1)}%</span>
           </div>
           <div className="relative h-3 bg-muted rounded-full overflow-hidden border border-border/50">
