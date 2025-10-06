@@ -8,7 +8,8 @@ import { WalletStatus } from '../components/WalletStatus';
 import { AccountInfo } from '../components/AccountInfo';
 import { AccountsList } from '../components/AccountsList';
 import { ImportXpubModal } from '../components/ImportXpubModal';
-import { getWalletDashboard, WalletDashboardData, triggerRescan } from '../services/api';
+import { SyncProgressBar } from '../components/SyncProgressBar';
+import { getWalletDashboard, WalletDashboardData, triggerRescan, getSyncProgress, SyncProgressData } from '../services/api';
 
 export const WalletDashboard = () => {
   const [data, setData] = useState<WalletDashboardData | null>(null);
@@ -16,8 +17,46 @@ export const WalletDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgressData | null>(null);
+  const [showSyncProgress, setShowSyncProgress] = useState(false);
+
+  const fetchSyncProgress = async () => {
+    try {
+      const progress = await getSyncProgress();
+      setSyncProgress(progress);
+      
+      // Show sync progress bar if rescanning
+      if (progress.isRescanning && progress.progress < 99) {
+        setShowSyncProgress(true);
+        setRescanning(true);
+      } else if (progress.progress >= 99 || !progress.isRescanning) {
+        // Hide progress bar when complete or not rescanning
+        const wasRescanning = showSyncProgress;
+        setShowSyncProgress(false);
+        setRescanning(false);
+        
+        // Resume normal wallet data polling by fetching data once
+        // The useEffect will then start the interval automatically
+        if (wasRescanning) {
+          console.log('Rescan completed - resuming normal wallet data polling');
+          setError(null); // Clear any errors from the rescan period
+          setLoading(false); // Ensure loading state is cleared
+          fetchData();
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching sync progress:', err);
+      // Don't show error for sync progress polling - it's optional
+    }
+  };
 
   const fetchData = async () => {
+    // Skip wallet data fetching during rescan - only poll sync progress
+    if (showSyncProgress) {
+      console.log('Skipping wallet data fetch - rescan in progress');
+      return;
+    }
+
     try {
       const walletData = await getWalletDashboard();
       setData(walletData);
@@ -26,17 +65,17 @@ export const WalletDashboard = () => {
       // Clear rescanning state if rescan is no longer active
       if (rescanning && !walletData.walletStatus.rescanInProgress) {
         setRescanning(false);
+        setShowSyncProgress(false);
       }
     } catch (err: any) {
       console.error('Error fetching wallet data:', err);
       
-      // During rescan, keep showing last data if we have it
-      // With increased timeouts, we should now get status updates even during rescan
+      // Handle errors appropriately
       if (err.code === 'ECONNABORTED' || err.message?.includes('timeout') || err.response?.status === 408) {
         if (!data) {
-          setError('Initializing wallet status. This may take a moment during rescan.');
+          setError('Initializing wallet status. This may take a moment.');
         }
-        // Don't clear existing data if we have it - progress bar will keep showing
+        // Don't clear existing data if we have it
       } else if (err.response?.status === 503) {
         setError('Wallet RPC not connected. Please ensure dcrwallet is running.');
       } else {
@@ -47,20 +86,63 @@ export const WalletDashboard = () => {
     }
   };
 
+  // Initial data fetch - check for active rescan first
   useEffect(() => {
-    fetchData();
-    // Auto-refresh every 10 seconds to show rescan progress
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    const initialize = async () => {
+      // First check if there's an active rescan
+      try {
+        const progress = await getSyncProgress();
+        if (progress.isRescanning && progress.progress < 99) {
+          // Rescan is active - show progress bar and skip wallet data fetch
+          console.log('Active rescan detected on load - showing progress bar');
+          setSyncProgress(progress);
+          setShowSyncProgress(true);
+          setRescanning(true);
+          setLoading(false);
+          setError(null); // Clear any errors
+          return; // Don't fetch wallet data
+        }
+      } catch (err) {
+        console.log('No active rescan detected, proceeding with normal fetch');
+      }
+      
+      // No active rescan - fetch wallet data normally
+      fetchData();
+    };
+    
+    initialize();
   }, []);
 
+  // Poll wallet data only when NOT rescanning
+  useEffect(() => {
+    if (!showSyncProgress) {
+      // Auto-refresh every 10 seconds when not rescanning
+      const interval = setInterval(fetchData, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [showSyncProgress]);
+
+  // Poll sync progress more frequently when rescanning
+  useEffect(() => {
+    if (rescanning || showSyncProgress) {
+      // Start polling immediately
+      fetchSyncProgress();
+      
+      // Poll every 3 seconds during rescan
+      const syncInterval = setInterval(fetchSyncProgress, 3000);
+      return () => clearInterval(syncInterval);
+    }
+  }, [rescanning, showSyncProgress]);
+
   const handleImportSuccess = (rescanEnabled: boolean) => {
-    // If rescan is enabled, set rescanning state and wait for logs
+    // If rescan is enabled, set rescanning state and show progress bar
     if (rescanEnabled) {
       setRescanning(true);
-      // Wait 2 seconds for rescan to start writing to logs
+      setShowSyncProgress(true);
+      setError(null); // Clear any existing errors
+      // Wait 2 seconds for rescan to start writing to logs, then start polling
       setTimeout(() => {
-        fetchData();
+        fetchSyncProgress();
       }, 2000);
     } else {
       // No rescan, just refresh data immediately
@@ -77,18 +159,19 @@ export const WalletDashboard = () => {
 
     try {
       setRescanning(true);
+      setShowSyncProgress(true); // Show progress bar immediately
       await triggerRescan();
       setError(null);
       
-      // Immediately fetch status to show progress bar
-      // Keep rescanning state true - it will be cleared by polling when rescan completes
+      // Start polling sync progress after a brief delay for logs to start
       setTimeout(() => {
-        fetchData();
+        fetchSyncProgress();
       }, 2000); // Wait 2 seconds for rescan to start writing to logs
     } catch (err: any) {
       console.error('Error triggering rescan:', err);
       setError(err.response?.data?.error || err.message || 'Failed to trigger rescan');
       setRescanning(false); // Only clear on error
+      setShowSyncProgress(false);
     }
   };
 
@@ -113,15 +196,25 @@ export const WalletDashboard = () => {
         </button>
       </div>
 
-      {/* Error Message */}
-      {error && (
+      {/* Sync Progress Bar - shown during rescan */}
+      {showSyncProgress && syncProgress && (
+        <SyncProgressBar
+          progress={syncProgress.progress}
+          scanHeight={syncProgress.scanHeight}
+          chainHeight={syncProgress.chainHeight}
+          message={syncProgress.message}
+        />
+      )}
+
+      {/* Error Message - hide if sync progress bar is showing */}
+      {error && !showSyncProgress && (
         <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 animate-fade-in">
           <p className="text-red-500 font-medium">{error}</p>
         </div>
       )}
 
       {/* Loading State */}
-      {loading && !data && (
+      {loading && !data && !showSyncProgress && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
           <p className="mt-4 text-muted-foreground">Loading wallet data...</p>

@@ -71,3 +71,11 @@ type RescanResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+type SyncProgressResponse struct {
+	IsRescanning bool    `json:"isRescanning"`
+	ScanHeight   int64   `json:"scanHeight"`
+	ChainHeight  int64   `json:"chainHeight"`
+	Progress     float64 `json:"progress"`
+	Message      string  `json:"message"`
+}
