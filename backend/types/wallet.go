@@ -27,12 +27,20 @@ type WalletStatus struct {
 }
 
 type AccountInfo struct {
-	AccountName        string  `json:"accountName"`
-	TotalBalance       float64 `json:"totalBalance"`
-	SpendableBalance   float64 `json:"spendableBalance"`
-	ImmatureBalance    float64 `json:"immatureBalance"`
-	UnconfirmedBalance float64 `json:"unconfirmedBalance"`
-	AccountNumber      uint32  `json:"accountNumber"`
+	AccountName             string  `json:"accountName"`
+	TotalBalance            float64 `json:"totalBalance"`
+	SpendableBalance        float64 `json:"spendableBalance"`
+	ImmatureBalance         float64 `json:"immatureBalance"`
+	UnconfirmedBalance      float64 `json:"unconfirmedBalance"`
+	LockedByTickets         float64 `json:"lockedByTickets"`
+	VotingAuthority         float64 `json:"votingAuthority"`
+	ImmatureCoinbaseRewards float64 `json:"immatureCoinbaseRewards"`
+	ImmatureStakeGeneration float64 `json:"immatureStakeGeneration"`
+	AccountNumber           uint32  `json:"accountNumber"`
+	// Wallet-wide totals (only populated in primary AccountInfo)
+	CumulativeTotal      float64 `json:"cumulativeTotal,omitempty"`
+	TotalSpendable       float64 `json:"totalSpendable,omitempty"`
+	TotalLockedByTickets float64 `json:"totalLockedByTickets,omitempty"`
 }
 
 type Transaction struct {

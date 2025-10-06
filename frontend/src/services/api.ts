@@ -153,7 +153,15 @@ export interface AccountInfo {
   spendableBalance: number;
   immatureBalance: number;
   unconfirmedBalance: number;
+  lockedByTickets: number;
+  votingAuthority: number;
+  immatureCoinbaseRewards: number;
+  immatureStakeGeneration: number;
   accountNumber: number;
+  // Wallet-wide totals (only on primary AccountInfo)
+  cumulativeTotal?: number;
+  totalSpendable?: number;
+  totalLockedByTickets?: number;
 }
 
 export interface WalletTransaction {

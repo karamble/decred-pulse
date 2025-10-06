@@ -41,7 +41,11 @@ export const MyTicketsInfo = ({
         <div className="text-center py-8">
           <Ticket className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground">No tickets found</p>
-          <p className="text-sm text-muted-foreground/70 mt-1">Import a wallet with tickets to see stats</p>
+          <p className="text-sm text-muted-foreground/70 mt-1">Connect to an external wallet via RPC to see stats</p>
+          <p className="text-xs text-muted-foreground/60 mt-3 max-w-md mx-auto">
+            Tickets cannot be detected on watch-only wallets with imported x-pub keys. 
+            A full wallet is required to track staking activity.
+          </p>
         </div>
       </div>
     );
