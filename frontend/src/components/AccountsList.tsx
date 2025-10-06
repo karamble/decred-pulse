@@ -37,7 +37,6 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h4 className="font-medium text-foreground">{account.accountName}</h4>
-                  <p className="text-xs text-muted-foreground">Account #{account.accountNumber}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-semibold text-primary">

@@ -9,6 +9,8 @@ import { AccountInfo } from '../components/AccountInfo';
 import { AccountsList } from '../components/AccountsList';
 import { ImportXpubModal } from '../components/ImportXpubModal';
 import { SyncProgressBar } from '../components/SyncProgressBar';
+import { TicketPoolInfo } from '../components/TicketPoolInfo';
+import { MyTicketsInfo } from '../components/MyTicketsInfo';
 import { getWalletDashboard, WalletDashboardData, triggerRescan, getSyncProgress, SyncProgressData } from '../services/api';
 
 export const WalletDashboard = () => {
@@ -265,6 +267,33 @@ export const WalletDashboard = () => {
           immatureBalance={data.accountInfo.immatureBalance}
           unconfirmedBalance={data.accountInfo.unconfirmedBalance}
         />
+      )}
+
+      {/* Staking Information */}
+      {data && data.walletStatus.status !== 'no_wallet' && data.stakingInfo && (
+        <>
+          {/* Ticket Pool & Difficulty Info */}
+          <TicketPoolInfo
+            poolSize={data.stakingInfo.poolSize}
+            currentDifficulty={data.stakingInfo.currentDifficulty}
+            nextDifficulty={data.stakingInfo.nextDifficulty}
+            estimatedMin={data.stakingInfo.estimatedMin}
+            estimatedMax={data.stakingInfo.estimatedMax}
+            estimatedExpected={data.stakingInfo.estimatedExpected}
+            allMempoolTix={data.stakingInfo.allMempoolTix}
+          />
+
+          {/* My Tickets Info */}
+          <MyTicketsInfo
+            ownMempoolTix={data.stakingInfo.ownMempoolTix}
+            immature={data.stakingInfo.immature}
+            unspent={data.stakingInfo.unspent}
+            voted={data.stakingInfo.voted}
+            revoked={data.stakingInfo.revoked}
+            unspentExpired={data.stakingInfo.unspentExpired}
+            totalSubsidy={data.stakingInfo.totalSubsidy}
+          />
+        </>
       )}
 
       {/* Accounts List */}
