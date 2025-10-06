@@ -28,35 +28,35 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {accounts.map((account) => (
             <div
               key={account.accountName}
-              className="p-4 rounded-lg bg-background/50 border border-border/30 hover:border-primary/30 transition-colors"
+              className="p-3 rounded-lg bg-background/50 border border-border/30 hover:border-primary/30 transition-colors"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <div>
-                  <h4 className="font-medium text-foreground">{account.accountName}</h4>
+                  <h4 className="font-medium text-sm text-foreground">{account.accountName}</h4>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-semibold text-primary">
+                  <p className="text-base font-semibold text-primary">
                     {account.totalBalance.toFixed(2)} DCR
                   </p>
-                  <p className="text-xs text-muted-foreground">Total Balance</p>
+                  <p className="text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                <div className="p-2 rounded bg-background/30">
-                  <div className="flex items-center gap-1 text-muted-foreground mb-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs">
+                <div className="p-1.5 rounded bg-background/30">
+                  <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
                     <Coins className="h-3 w-3 text-success" />
                     <p>Spendable</p>
                   </div>
                   <p className="font-medium text-success">{account.spendableBalance.toFixed(2)}</p>
                 </div>
                 {account.lockedByTickets > 0 && (
-                  <div className="p-2 rounded bg-background/30">
-                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
                       <Lock className="h-3 w-3 text-blue-500" />
                       <p>Locked</p>
                     </div>
@@ -64,8 +64,8 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.immatureBalance > 0 && (
-                  <div className="p-2 rounded bg-background/30">
-                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
                       <Clock className="h-3 w-3 text-warning" />
                       <p>Immature</p>
                     </div>
@@ -73,8 +73,8 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.unconfirmedBalance > 0 && (
-                  <div className="p-2 rounded bg-background/30">
-                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
                       <AlertCircle className="h-3 w-3 text-muted-foreground" />
                       <p>Unconfirmed</p>
                     </div>
@@ -82,8 +82,8 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.votingAuthority > 0 && (
-                  <div className="p-2 rounded bg-background/30">
-                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
                       <Vote className="h-3 w-3 text-purple-500" />
                       <p>Voting Auth</p>
                     </div>

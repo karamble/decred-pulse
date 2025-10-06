@@ -237,3 +237,42 @@ func GetSyncProgressHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+// ListTransactionsHandler handles requests for wallet transaction history
+func ListTransactionsHandler(w http.ResponseWriter, r *http.Request) {
+	if rpc.WalletClient == nil {
+		http.Error(w, "Wallet RPC client not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Parse query parameters
+	query := r.URL.Query()
+	count := 50 // default
+	from := 0   // default
+
+	if c := query.Get("count"); c != "" {
+		if parsed, err := fmt.Sscanf(c, "%d", &count); err == nil && parsed == 1 {
+			// count parsed successfully
+		}
+	}
+	if f := query.Get("from"); f != "" {
+		if parsed, err := fmt.Sscanf(f, "%d", &from); err == nil && parsed == 1 {
+			// from parsed successfully
+		}
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Fetch transactions
+	transactions, err := services.ListTransactions(ctx, count, from)
+	if err != nil {
+		log.Printf("Error listing transactions: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(transactions)
+}

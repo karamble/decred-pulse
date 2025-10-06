@@ -457,64 +457,7 @@ func FetchAllAccounts(ctx context.Context) ([]types.AccountInfo, error) {
 	return accounts, nil
 }
 
-func FetchTransactions() ([]types.Transaction, error) {
-	return FetchTransactionsWithContext(context.Background())
-}
-
-func FetchTransactionsWithContext(ctx context.Context) ([]types.Transaction, error) {
-	// Get recent transactions via raw RPC
-	// listtransactions returns empty array if no xpub imported
-	result, err := rpc.WalletClient.RawRequest(ctx, "listtransactions", []json.RawMessage{
-		json.RawMessage(`"*"`),
-		json.RawMessage(`50`),
-		json.RawMessage(`0`),
-	})
-	if err != nil {
-		log.Printf("Warning: Failed to list transactions: %v", err)
-		return []types.Transaction{}, nil
-	}
-
-	// Parse the result
-	var rawTxList []map[string]interface{}
-	if err := json.Unmarshal(result, &rawTxList); err != nil {
-		log.Printf("Warning: Failed to unmarshal transactions: %v", err)
-		return []types.Transaction{}, nil
-	}
-
-	transactions := make([]types.Transaction, 0, len(rawTxList))
-	for _, tx := range rawTxList {
-		txType := "receive"
-		amount, _ := tx["amount"].(float64)
-		if amount < 0 {
-			txType = "send"
-		}
-		if category, ok := tx["category"].(string); ok {
-			if category == "ticket" {
-				txType = "ticket"
-			} else if category == "vote" {
-				txType = "vote"
-			}
-		}
-
-		txid, _ := tx["txid"].(string)
-		confirmations, _ := tx["confirmations"].(float64)
-		txTime, _ := tx["time"].(float64)
-		fee, _ := tx["fee"].(float64)
-		comment, _ := tx["comment"].(string)
-
-		transactions = append(transactions, types.Transaction{
-			TxID:          txid,
-			Amount:        amount,
-			Fee:           fee,
-			Confirmations: int64(confirmations),
-			Time:          time.Unix(int64(txTime), 0),
-			Type:          txType,
-			Comment:       comment,
-		})
-	}
-
-	return transactions, nil
-}
+// Old FetchTransactions functions removed - replaced by ListTransactions
 
 func FetchAddresses() ([]types.Address, error) {
 	return FetchAddressesWithContext(context.Background())
@@ -641,4 +584,87 @@ func FetchWalletStakingInfo(ctx context.Context) (*types.WalletStakingInfo, erro
 	}
 
 	return stakingInfo, nil
+}
+
+// ListTransactions fetches recent wallet transactions
+func ListTransactions(ctx context.Context, count, from int) (*types.TransactionListResponse, error) {
+	// Default parameters
+	if count <= 0 {
+		count = 50 // Default to 50 transactions
+	}
+	if count > 200 {
+		count = 200 // Cap at 200 for performance
+	}
+
+	// Call listtransactions RPC with parameters
+	result, err := rpc.WalletClient.RawRequest(ctx, "listtransactions", []json.RawMessage{
+		json.RawMessage(`"*"`),                    // account (all accounts)
+		json.RawMessage(fmt.Sprintf("%d", count)), // count
+		json.RawMessage(fmt.Sprintf("%d", from)),  // from (skip)
+		json.RawMessage("false"),                  // includewatchonly
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list transactions: %w", err)
+	}
+
+	// Parse the response
+	var rpcTransactions []struct {
+		Account         string   `json:"account"`
+		Address         string   `json:"address"`
+		Amount          float64  `json:"amount"`
+		BlockHash       string   `json:"blockhash"`
+		BlockTime       int64    `json:"blocktime"`
+		Category        string   `json:"category"`
+		Confirmations   int64    `json:"confirmations"`
+		Fee             float64  `json:"fee"`
+		Generated       bool     `json:"generated"`
+		Time            int64    `json:"time"`
+		TimeReceived    int64    `json:"timereceived"`
+		TxID            string   `json:"txid"`
+		TxType          string   `json:"txtype"`
+		Vout            uint32   `json:"vout"`
+		WalletConflicts []string `json:"walletconflicts"`
+	}
+
+	if err := json.Unmarshal(result, &rpcTransactions); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal transactions: %w", err)
+	}
+
+	// Convert to our transaction type
+	transactions := make([]types.Transaction, 0, len(rpcTransactions))
+	seenTxIDs := make(map[string]bool) // Track unique transactions to avoid duplicates
+
+	for _, rpcTx := range rpcTransactions {
+		// Create a unique key for this transaction (txid + vout)
+		uniqueKey := fmt.Sprintf("%s-%d", rpcTx.TxID, rpcTx.Vout)
+
+		// Skip if we've already processed this exact output
+		if seenTxIDs[uniqueKey] {
+			continue
+		}
+		seenTxIDs[uniqueKey] = true
+
+		tx := types.Transaction{
+			TxID:          rpcTx.TxID,
+			Amount:        rpcTx.Amount,
+			Fee:           rpcTx.Fee,
+			Confirmations: rpcTx.Confirmations,
+			BlockHash:     rpcTx.BlockHash,
+			BlockTime:     rpcTx.BlockTime,
+			Time:          time.Unix(rpcTx.Time, 0),
+			Category:      rpcTx.Category,
+			TxType:        rpcTx.TxType,
+			Address:       rpcTx.Address,
+			Account:       rpcTx.Account,
+			Vout:          rpcTx.Vout,
+			Generated:     rpcTx.Generated,
+		}
+
+		transactions = append(transactions, tx)
+	}
+
+	return &types.TransactionListResponse{
+		Transactions: transactions,
+		Total:        len(transactions),
+	}, nil
 }
