@@ -320,11 +320,30 @@ docker logs decred-pulse-dcrwallet
 3. **Check network** - Mainnet xpub on mainnet, testnet on testnet
 4. **Wait for sync** - dcrd must be fully synced first
 
-### Missing Transactions
+### Missing Transactions or Funds
 
 1. **Trigger rescan** - May have missed blocks
 2. **Check block height** - Ensure wallet is synced to latest block
 3. **Verify addresses** - Check if addresses are in wallet
+4. **Increase gap limit** - Funds may be at high address indices (see Advanced Configuration)
+
+**Common Issue:** Rescan completed but funds still missing
+
+This often happens when your funds are at addresses beyond the gap limit (default: 1000). For example:
+- You used addresses 0-10, then jumped to addresses 2000-2050
+- The gap of 1990 unused addresses exceeds the limit
+- Solution: Increase `DCRWALLET_GAP_LIMIT` to 5000 or higher
+
+**Fix:**
+```bash
+# Edit .env
+echo "DCRWALLET_GAP_LIMIT=5000" >> .env
+
+# Restart wallet
+docker-compose restart dcrwallet
+
+# Trigger full rescan from wallet dashboard
+```
 
 ---
 
@@ -343,6 +362,49 @@ curl -X POST http://localhost:8080/api/wallet/rescan \
   -H "Content-Type: application/json" \
   -d '{"beginHeight": 500000}'
 ```
+
+### Address Gap Limit Configuration
+
+The **gap limit** defines how many consecutive unused addresses dcrwallet will monitor. If you have funds at addresses beyond the gap limit, they won't be discovered during rescans.
+
+**Default:** 1000 addresses (configurable)
+**Standard:** BIP0044 recommends 20 (too low for many use cases)
+
+#### When to Increase Gap Limit:
+
+- ✅ Funds not appearing after rescan
+- ✅ You used addresses with high indices (e.g., address #2000)
+- ✅ You had large gaps in address usage
+- ✅ Importing from another wallet with sparse usage
+
+#### Configure Gap Limit:
+
+Edit your `.env` file:
+
+```bash
+# Recommended values:
+# 1000 - Good balance (default)
+# 5000 - Thorough discovery
+# 10000 - Very thorough (slower, more memory)
+DCRWALLET_GAP_LIMIT=5000
+```
+
+Then restart dcrwallet:
+
+```bash
+docker-compose restart dcrwallet
+```
+
+#### Trade-offs:
+
+| Gap Limit | Discovery | Memory Usage | Rescan Time |
+|-----------|-----------|--------------|-------------|
+| 100       | Limited   | Low          | Fast        |
+| 1000      | Good      | Moderate     | Moderate    |
+| 5000      | Thorough  | High         | Slow        |
+| 10000     | Exhaustive| Very High    | Very Slow   |
+
+**Note:** After changing the gap limit, you must trigger a full rescan from the wallet dashboard for the new limit to take effect.
 
 ### Manual Wallet Operations
 

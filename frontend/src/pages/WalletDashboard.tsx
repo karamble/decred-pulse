@@ -25,23 +25,46 @@ export const WalletDashboard = () => {
       const progress = await getSyncProgress();
       setSyncProgress(progress);
       
-      // Show sync progress bar if rescanning
-      if (progress.isRescanning && progress.progress < 99) {
+      // Check if rescan is active (backend returns false when logs are stale/complete)
+      if (!progress.isRescanning) {
+        // Rescan is complete or stale - stop polling
+        if (showSyncProgress || rescanning) {
+          console.log('Rescan no longer active (stale or complete) - stopping sync progress polling');
+          const wasRescanning = showSyncProgress;
+          setShowSyncProgress(false);
+          setRescanning(false);
+          
+          // Resume normal wallet data polling
+          if (wasRescanning) {
+            console.log('Resuming normal wallet data polling');
+            setError(null);
+            setLoading(false);
+            fetchData(true);
+          }
+        }
+        return; // Stop processing - rescan is not active
+      }
+      
+      // Rescan is active
+      if (progress.progress < 99) {
+        // Still rescanning - show progress bar
         setShowSyncProgress(true);
         setRescanning(true);
-      } else if (progress.progress >= 99 || !progress.isRescanning) {
-        // Hide progress bar when complete or not rescanning
-        const wasRescanning = showSyncProgress;
-        setShowSyncProgress(false);
-        setRescanning(false);
-        
-        // Resume normal wallet data polling by fetching data once
-        // The useEffect will then start the interval automatically
-        if (wasRescanning) {
-          console.log('Rescan completed - resuming normal wallet data polling');
-          setError(null); // Clear any errors from the rescan period
-          setLoading(false); // Ensure loading state is cleared
-          fetchData();
+      } else {
+        // Progress reached 99% - rescan complete
+        if (showSyncProgress || rescanning) {
+          console.log('Rescan completed (99%) - stopping sync progress polling');
+          const wasRescanning = showSyncProgress;
+          setShowSyncProgress(false);
+          setRescanning(false);
+          
+          // Resume normal wallet data polling
+          if (wasRescanning) {
+            console.log('Resuming normal wallet data polling');
+            setError(null);
+            setLoading(false);
+            fetchData(true);
+          }
         }
       }
     } catch (err: any) {
@@ -50,9 +73,10 @@ export const WalletDashboard = () => {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (force = false) => {
     // Skip wallet data fetching during rescan - only poll sync progress
-    if (showSyncProgress) {
+    // Unless force=true (when explicitly called after rescan completes)
+    if (showSyncProgress && !force) {
       console.log('Skipping wallet data fetch - rescan in progress');
       return;
     }
