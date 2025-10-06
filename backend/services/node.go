@@ -6,9 +6,11 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -386,9 +388,10 @@ func FetchStakingInfo() (*types.StakingInfo, error) {
 func FetchMempoolInfo() (*types.MempoolInfo, error) {
 	ctx := context.Background()
 
-	// Get raw mempool - this is a standard method available in rpcclient
-	hashes, err := rpc.DcrdClient.GetRawMempool(ctx, "false")
+	// Use getmempoolinfo RPC to get actual mempool statistics
+	result, err := rpc.DcrdClient.RawRequest(ctx, "getmempoolinfo", []json.RawMessage{})
 	if err != nil {
+		log.Printf("Warning: Failed to get mempool info: %v", err)
 		// If mempool query fails (e.g., during sync), return empty mempool
 		return &types.MempoolInfo{
 			Size:           0,
@@ -396,19 +399,329 @@ func FetchMempoolInfo() (*types.MempoolInfo, error) {
 			TxCount:        0,
 			TotalFee:       0,
 			AverageFeeRate: 0,
+			Tickets:        0,
+			Votes:          0,
+			Revocations:    0,
+			RegularTxs:     0,
 		}, nil
 	}
 
-	// Count transactions - this is the only real data we have
-	txCount := len(hashes)
+	// Parse the getmempoolinfo response
+	type MempoolInfoResponse struct {
+		Size  int    `json:"size"`  // Number of transactions
+		Bytes uint64 `json:"bytes"` // Total size in bytes
+	}
 
-	// We don't have access to actual size and fees without querying each transaction
-	// Show 0 instead of estimates
+	var mempoolResp MempoolInfoResponse
+	if err := json.Unmarshal(result, &mempoolResp); err != nil {
+		log.Printf("Warning: Failed to unmarshal mempool info: %v", err)
+		return &types.MempoolInfo{
+			Size:           0,
+			Bytes:          0,
+			TxCount:        0,
+			TotalFee:       0,
+			AverageFeeRate: 0,
+			Tickets:        0,
+			Votes:          0,
+			Revocations:    0,
+			RegularTxs:     0,
+		}, nil
+	}
+
+	// Analyze mempool transactions to categorize staking transactions
+	tickets, votes, revocations, regular := analyzeMempoolTransactions(ctx)
+
 	return &types.MempoolInfo{
-		Size:           uint64(txCount),
-		Bytes:          0,
-		TxCount:        txCount,
-		TotalFee:       0,
-		AverageFeeRate: 0,
+		Size:           uint64(mempoolResp.Size),
+		Bytes:          mempoolResp.Bytes,
+		TxCount:        mempoolResp.Size,
+		TotalFee:       0, // Not available from getmempoolinfo
+		AverageFeeRate: 0, // Not available from getmempoolinfo
+		Tickets:        tickets,
+		Votes:          votes,
+		Revocations:    revocations,
+		RegularTxs:     regular,
 	}, nil
+}
+
+func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocations, regular int) {
+	// Get current stake difficulty (ticket price)
+	stakeDiff := getStakeDifficulty(ctx)
+	if stakeDiff <= 0 {
+		log.Printf("Warning: Could not get stake difficulty, falling back to transaction counting")
+		return analyzeMempoolTransactionsLegacy(ctx)
+	}
+
+	// Get all transaction hashes from mempool
+	result, err := rpc.DcrdClient.RawRequest(ctx, "getrawmempool", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get raw mempool: %v", err)
+		return 0, 0, 0, 0
+	}
+
+	var txHashes []string
+	if err := json.Unmarshal(result, &txHashes); err != nil {
+		log.Printf("Warning: Failed to unmarshal mempool hashes: %v", err)
+		return 0, 0, 0, 0
+	}
+
+	// Analyze each transaction (limit to reasonable number to avoid performance issues)
+	maxToAnalyze := 100
+	if len(txHashes) > maxToAnalyze {
+		txHashes = txHashes[:maxToAnalyze]
+	}
+
+	// Sum up total stakesubmission output values to calculate actual ticket count
+	var totalStakeValue float64
+
+	for _, txHash := range txHashes {
+		txType, stakeValue := getTransactionTypeAndStakeValue(ctx, txHash)
+		switch txType {
+		case "ticket":
+			totalStakeValue += stakeValue
+		case "vote":
+			votes++
+		case "revocation":
+			revocations++
+		default:
+			regular++
+		}
+	}
+
+	// Calculate actual ticket count based on stake difficulty
+	// Each ticket costs exactly stakeDiff DCR
+	if totalStakeValue > 0 {
+		tickets = int(math.Round(totalStakeValue / stakeDiff))
+	}
+
+	return tickets, votes, revocations, regular
+}
+
+// getStakeDifficulty fetches the current ticket price from dcrd
+func getStakeDifficulty(ctx context.Context) float64 {
+	result, err := rpc.DcrdClient.RawRequest(ctx, "getstakedifficulty", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get stake difficulty: %v", err)
+		return 0
+	}
+
+	var diffResult struct {
+		Current float64 `json:"current"`
+	}
+	if err := json.Unmarshal(result, &diffResult); err != nil {
+		log.Printf("Warning: Failed to unmarshal stake difficulty: %v", err)
+		return 0
+	}
+
+	return diffResult.Current
+}
+
+// getTransactionTypeAndStakeValue returns the transaction type and total stake submission value
+func getTransactionTypeAndStakeValue(ctx context.Context, txHash string) (string, float64) {
+	// Get raw transaction
+	rawTxResult, err := rpc.DcrdClient.RawRequest(ctx, "getrawtransaction", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, txHash)),
+	})
+	if err != nil {
+		return "regular", 0
+	}
+
+	var rawTxHex string
+	if err := json.Unmarshal(rawTxResult, &rawTxHex); err != nil {
+		return "regular", 0
+	}
+
+	// Decode the transaction
+	decodedResult, err := rpc.DcrdClient.RawRequest(ctx, "decoderawtransaction", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, rawTxHex)),
+	})
+	if err != nil {
+		return "regular", 0
+	}
+
+	// Parse decoded transaction
+	type VinData struct {
+		Stakebase string `json:"stakebase,omitempty"`
+	}
+	type ScriptPubKey struct {
+		Asm  string `json:"asm"`
+		Type string `json:"type"`
+	}
+	type VoutData struct {
+		Value        float64      `json:"value"`
+		ScriptPubKey ScriptPubKey `json:"scriptPubKey"`
+	}
+	type DecodedTx struct {
+		Vin  []VinData  `json:"vin"`
+		Vout []VoutData `json:"vout"`
+	}
+
+	var decoded DecodedTx
+	if err := json.Unmarshal(decodedResult, &decoded); err != nil {
+		return "regular", 0
+	}
+
+	// Check for vote (SSGen) - has stakebase input
+	if len(decoded.Vin) > 0 && decoded.Vin[0].Stakebase != "" {
+		return "vote", 0
+	}
+
+	// Check outputs for stake transaction types and sum stakesubmission values
+	hasStakeSubmission := false
+	var totalStakeValue float64
+
+	for _, vout := range decoded.Vout {
+		scriptType := vout.ScriptPubKey.Type
+		asm := vout.ScriptPubKey.Asm
+
+		// Ticket purchase (SSTx) - sum up stakesubmission output values
+		if strings.Contains(scriptType, "stakesubmission") {
+			hasStakeSubmission = true
+			totalStakeValue += vout.Value
+		}
+
+		// Vote (SSGen) - already caught by stakebase check above
+		if scriptType == "stakegen-pubkeyhash" || scriptType == "stakegen" {
+			return "vote", 0
+		}
+		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSGEN") {
+			return "vote", 0
+		}
+
+		// Revocation (SSRtx)
+		if scriptType == "stakerevoke" {
+			return "revocation", 0
+		}
+		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSRTX") {
+			return "revocation", 0
+		}
+	}
+
+	// If we found stakesubmission outputs, it's a ticket transaction
+	if hasStakeSubmission {
+		return "ticket", totalStakeValue
+	}
+
+	return "regular", 0
+}
+
+// analyzeMempoolTransactionsLegacy is the old transaction-counting method (fallback)
+func analyzeMempoolTransactionsLegacy(ctx context.Context) (tickets, votes, revocations, regular int) {
+	result, err := rpc.DcrdClient.RawRequest(ctx, "getrawmempool", []json.RawMessage{})
+	if err != nil {
+		return 0, 0, 0, 0
+	}
+
+	var txHashes []string
+	if err := json.Unmarshal(result, &txHashes); err != nil {
+		return 0, 0, 0, 0
+	}
+
+	maxToAnalyze := 100
+	if len(txHashes) > maxToAnalyze {
+		txHashes = txHashes[:maxToAnalyze]
+	}
+
+	for _, txHash := range txHashes {
+		txType := getTransactionType(ctx, txHash)
+		switch txType {
+		case "ticket":
+			tickets++
+		case "vote":
+			votes++
+		case "revocation":
+			revocations++
+		default:
+			regular++
+		}
+	}
+
+	return tickets, votes, revocations, regular
+}
+
+func getTransactionType(ctx context.Context, txHash string) string {
+	// Get raw transaction
+	rawTxResult, err := rpc.DcrdClient.RawRequest(ctx, "getrawtransaction", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, txHash)),
+	})
+	if err != nil {
+		return "regular"
+	}
+
+	var rawTxHex string
+	if err := json.Unmarshal(rawTxResult, &rawTxHex); err != nil {
+		return "regular"
+	}
+
+	// Decode the transaction
+	decodedResult, err := rpc.DcrdClient.RawRequest(ctx, "decoderawtransaction", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, rawTxHex)),
+	})
+	if err != nil {
+		return "regular"
+	}
+
+	// Parse decoded transaction
+	type VinData struct {
+		Stakebase string `json:"stakebase,omitempty"`
+	}
+	type ScriptPubKey struct {
+		Asm  string `json:"asm"`
+		Type string `json:"type"`
+	}
+	type VoutData struct {
+		ScriptPubKey ScriptPubKey `json:"scriptPubKey"`
+	}
+	type DecodedTx struct {
+		Vin  []VinData  `json:"vin"`
+		Vout []VoutData `json:"vout"`
+	}
+
+	var decoded DecodedTx
+	if err := json.Unmarshal(decodedResult, &decoded); err != nil {
+		return "regular"
+	}
+
+	// Check for vote (SSGen) - has stakebase input
+	if len(decoded.Vin) > 0 && decoded.Vin[0].Stakebase != "" {
+		return "vote"
+	}
+
+	// Check outputs for stake transaction types
+	hasStakeSubmission := false
+	for _, vout := range decoded.Vout {
+		scriptType := vout.ScriptPubKey.Type
+		asm := vout.ScriptPubKey.Asm
+
+		// Ticket purchase (SSTx) - check for stakesubmission types or OP_SSTX in ASM
+		if strings.Contains(scriptType, "stakesubmission") || strings.Contains(scriptType, "sstx") {
+			hasStakeSubmission = true
+		}
+		if len(asm) >= 7 && strings.HasPrefix(asm, "OP_SSTX") {
+			hasStakeSubmission = true
+		}
+
+		// Vote (SSGen) - already caught by stakebase check above, but double-check
+		if scriptType == "stakegen-pubkeyhash" || scriptType == "stakegen" {
+			return "vote"
+		}
+		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSGEN") {
+			return "vote"
+		}
+
+		// Revocation (SSRtx)
+		if scriptType == "stakerevoke" {
+			return "revocation"
+		}
+		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSRTX") {
+			return "revocation"
+		}
+	}
+
+	// If we found stakesubmission in any output, it's a ticket
+	if hasStakeSubmission {
+		return "ticket"
+	}
+
+	return "regular"
 }

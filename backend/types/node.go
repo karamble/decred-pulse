@@ -79,6 +79,10 @@ type MempoolInfo struct {
 	TxCount        int     `json:"txCount"`
 	TotalFee       float64 `json:"totalFee"`
 	AverageFeeRate float64 `json:"averageFeeRate"`
+	Tickets        int     `json:"tickets"`     // Ticket purchases in mempool
+	Votes          int     `json:"votes"`       // Votes in mempool
+	Revocations    int     `json:"revocations"` // Revocations in mempool
+	RegularTxs     int     `json:"regularTxs"`  // Regular transactions
 }
 
 // RPC connection types
