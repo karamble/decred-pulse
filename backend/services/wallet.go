@@ -239,6 +239,7 @@ func FetchWalletDashboardDataWithContext(ctx context.Context) (*types.WalletDash
 
 	accountInfo := &types.AccountInfo{}
 	accounts := []types.AccountInfo{}
+	var stakingInfo *types.WalletStakingInfo
 
 	// Fetch data with timeout protection - use channels to respect context
 	type accountResult struct {
@@ -249,9 +250,14 @@ func FetchWalletDashboardDataWithContext(ctx context.Context) (*types.WalletDash
 		data []types.AccountInfo
 		err  error
 	}
+	type stakingResult struct {
+		data *types.WalletStakingInfo
+		err  error
+	}
 
 	accountChan := make(chan accountResult, 1)
 	accountsChan := make(chan accountsResult, 1)
+	stakingChan := make(chan stakingResult, 1)
 
 	go func() {
 		info, err := FetchAccountInfoWithContext(ctx)
@@ -261,6 +267,11 @@ func FetchWalletDashboardDataWithContext(ctx context.Context) (*types.WalletDash
 	go func() {
 		accts, err := FetchAllAccounts(ctx)
 		accountsChan <- accountsResult{accts, err}
+	}()
+
+	go func() {
+		staking, err := FetchWalletStakingInfo(ctx)
+		stakingChan <- stakingResult{staking, err}
 	}()
 
 	select {
@@ -285,10 +296,23 @@ func FetchWalletDashboardDataWithContext(ctx context.Context) (*types.WalletDash
 		log.Printf("Warning: Accounts fetch cancelled: %v", ctx.Err())
 	}
 
+	select {
+	case res := <-stakingChan:
+		if res.err != nil {
+			log.Printf("Warning: Failed to fetch staking info: %v", res.err)
+			// Staking info is optional - continue without it
+		} else {
+			stakingInfo = res.data
+		}
+	case <-ctx.Done():
+		log.Printf("Warning: Staking info fetch cancelled: %v", ctx.Err())
+	}
+
 	return &types.WalletDashboardData{
 		WalletStatus: *walletStatus,
 		AccountInfo:  *accountInfo,
 		Accounts:     accounts,
+		StakingInfo:  stakingInfo,
 		LastUpdate:   time.Now(),
 	}, nil
 }
@@ -404,7 +428,7 @@ func FetchAllAccounts(ctx context.Context) ([]types.AccountInfo, error) {
 			SpendableBalance:   acct.Spendable,
 			ImmatureBalance:    acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration,
 			UnconfirmedBalance: acct.Unconfirmed,
-			AccountNumber:      acct.AccountNumber,
+			AccountNumber:      0, // Account numbers not reliably available from RPC
 		})
 	}
 
@@ -516,4 +540,83 @@ func FetchAddressesWithContext(ctx context.Context) ([]types.Address, error) {
 
 	log.Printf("Returning %d addresses with funds", len(addresses))
 	return addresses, nil
+}
+
+func FetchWalletStakingInfo(ctx context.Context) (*types.WalletStakingInfo, error) {
+	stakingInfo := &types.WalletStakingInfo{}
+
+	// Fetch getstakeinfo
+	stakeInfoResult, err := rpc.WalletClient.RawRequest(ctx, "getstakeinfo", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get stake info: %v", err)
+		return nil, err
+	}
+
+	type StakeInfoResponse struct {
+		BlockHeight    int64   `json:"blockheight"`
+		Difficulty     float64 `json:"difficulty"`
+		TotalSubsidy   float64 `json:"totalsubsidy"`
+		OwnMempoolTix  int32   `json:"ownmempooltix"`
+		Immature       int32   `json:"immature"`
+		Unspent        int32   `json:"unspent"`
+		Voted          int32   `json:"voted"`
+		Revoked        int32   `json:"revoked"`
+		UnspentExpired int32   `json:"unspentexpired"`
+		PoolSize       int32   `json:"poolsize"`
+		AllMempoolTix  int32   `json:"allmempooltix"`
+	}
+
+	var stakeInfo StakeInfoResponse
+	if err := json.Unmarshal(stakeInfoResult, &stakeInfo); err != nil {
+		log.Printf("Warning: Failed to unmarshal stake info: %v", err)
+		return nil, err
+	}
+
+	stakingInfo.BlockHeight = stakeInfo.BlockHeight
+	stakingInfo.Difficulty = stakeInfo.Difficulty
+	stakingInfo.TotalSubsidy = stakeInfo.TotalSubsidy
+	stakingInfo.OwnMempoolTix = stakeInfo.OwnMempoolTix
+	stakingInfo.Immature = stakeInfo.Immature
+	stakingInfo.Unspent = stakeInfo.Unspent
+	stakingInfo.Voted = stakeInfo.Voted
+	stakingInfo.Revoked = stakeInfo.Revoked
+	stakingInfo.UnspentExpired = stakeInfo.UnspentExpired
+	stakingInfo.PoolSize = stakeInfo.PoolSize
+	stakingInfo.AllMempoolTix = stakeInfo.AllMempoolTix
+
+	// Fetch estimatestakediff
+	estimateResult, err := rpc.WalletClient.RawRequest(ctx, "estimatestakediff", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to estimate stake diff: %v", err)
+	} else {
+		type EstimateResponse struct {
+			Min      float64 `json:"min"`
+			Max      float64 `json:"max"`
+			Expected float64 `json:"expected"`
+		}
+		var estimate EstimateResponse
+		if err := json.Unmarshal(estimateResult, &estimate); err == nil {
+			stakingInfo.EstimatedMin = estimate.Min
+			stakingInfo.EstimatedMax = estimate.Max
+			stakingInfo.EstimatedExpected = estimate.Expected
+		}
+	}
+
+	// Fetch getstakedifficulty
+	difficultyResult, err := rpc.WalletClient.RawRequest(ctx, "getstakedifficulty", []json.RawMessage{})
+	if err != nil {
+		log.Printf("Warning: Failed to get stake difficulty: %v", err)
+	} else {
+		type DifficultyResponse struct {
+			Current float64 `json:"current"`
+			Next    float64 `json:"next"`
+		}
+		var difficulty DifficultyResponse
+		if err := json.Unmarshal(difficultyResult, &difficulty); err == nil {
+			stakingInfo.CurrentDifficulty = difficulty.Current
+			stakingInfo.NextDifficulty = difficulty.Next
+		}
+	}
+
+	return stakingInfo, nil
 }

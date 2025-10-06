@@ -169,10 +169,30 @@ export interface WalletAddress {
   path: string;
 }
 
+export interface StakingInfo {
+  blockHeight: number;
+  difficulty: number;
+  totalSubsidy: number;
+  ownMempoolTix: number;
+  immature: number;
+  unspent: number;
+  voted: number;
+  revoked: number;
+  unspentExpired: number;
+  poolSize: number;
+  allMempoolTix: number;
+  estimatedMin: number;
+  estimatedMax: number;
+  estimatedExpected: number;
+  currentDifficulty: number;
+  nextDifficulty: number;
+}
+
 export interface WalletDashboardData {
   walletStatus: WalletStatus;
   accountInfo: AccountInfo;
   accounts: AccountInfo[];
+  stakingInfo?: StakingInfo;
   lastUpdate: string;
 }
 

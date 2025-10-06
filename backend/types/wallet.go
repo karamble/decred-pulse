@@ -8,10 +8,11 @@ import "time"
 
 // WalletDashboardData represents all wallet dashboard metrics
 type WalletDashboardData struct {
-	WalletStatus WalletStatus  `json:"walletStatus"`
-	AccountInfo  AccountInfo   `json:"accountInfo"`
-	Accounts     []AccountInfo `json:"accounts"`
-	LastUpdate   time.Time     `json:"lastUpdate"`
+	WalletStatus WalletStatus       `json:"walletStatus"`
+	AccountInfo  AccountInfo        `json:"accountInfo"`
+	Accounts     []AccountInfo      `json:"accounts"`
+	StakingInfo  *WalletStakingInfo `json:"stakingInfo,omitempty"`
+	LastUpdate   time.Time          `json:"lastUpdate"`
 }
 
 type WalletStatus struct {
@@ -78,4 +79,27 @@ type SyncProgressResponse struct {
 	ChainHeight  int64   `json:"chainHeight"`
 	Progress     float64 `json:"progress"`
 	Message      string  `json:"message"`
+}
+
+// WalletStakingInfo represents wallet staking information
+type WalletStakingInfo struct {
+	// From getstakeinfo
+	BlockHeight    int64   `json:"blockHeight"`
+	Difficulty     float64 `json:"difficulty"`
+	TotalSubsidy   float64 `json:"totalSubsidy"`
+	OwnMempoolTix  int32   `json:"ownMempoolTix"`
+	Immature       int32   `json:"immature"`
+	Unspent        int32   `json:"unspent"`
+	Voted          int32   `json:"voted"`
+	Revoked        int32   `json:"revoked"`
+	UnspentExpired int32   `json:"unspentExpired"`
+	PoolSize       int32   `json:"poolSize"`
+	AllMempoolTix  int32   `json:"allMempoolTix"`
+	// From estimatestakediff
+	EstimatedMin      float64 `json:"estimatedMin"`
+	EstimatedMax      float64 `json:"estimatedMax"`
+	EstimatedExpected float64 `json:"estimatedExpected"`
+	// From getstakedifficulty
+	CurrentDifficulty float64 `json:"currentDifficulty"`
+	NextDifficulty    float64 `json:"nextDifficulty"`
 }
