@@ -39,24 +39,54 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   <h4 className="font-medium text-sm text-foreground">{account.accountName}</h4>
                 </div>
                 <div className="text-right">
+<<<<<<< HEAD
                   <p className="text-base font-semibold text-primary">
+=======
+<<<<<<< HEAD
+                  <p className="text-base font-semibold text-primary">
+=======
+                  <p className="text-lg font-semibold text-primary">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                     {account.totalBalance.toFixed(2)} DCR
                   </p>
                   <p className="text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
 
+<<<<<<< HEAD
               <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs">
                 <div className="p-1.5 rounded bg-background/30">
                   <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+<<<<<<< HEAD
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs">
+                <div className="p-1.5 rounded bg-background/30">
+                  <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded bg-background/30">
+                  <div className="flex items-center gap-1 text-muted-foreground mb-1">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                     <Coins className="h-3 w-3 text-success" />
                     <p>Spendable</p>
                   </div>
                   <p className="font-medium text-success">{account.spendableBalance.toFixed(2)}</p>
                 </div>
                 {account.lockedByTickets > 0 && (
+<<<<<<< HEAD
                   <div className="p-1.5 rounded bg-background/30">
                     <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+<<<<<<< HEAD
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                       <Lock className="h-3 w-3 text-blue-500" />
                       <p>Locked</p>
                     </div>
@@ -64,8 +94,18 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.immatureBalance > 0 && (
+<<<<<<< HEAD
                   <div className="p-1.5 rounded bg-background/30">
                     <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+<<<<<<< HEAD
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                       <Clock className="h-3 w-3 text-warning" />
                       <p>Immature</p>
                     </div>
@@ -73,8 +113,18 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.unconfirmedBalance > 0 && (
+<<<<<<< HEAD
                   <div className="p-1.5 rounded bg-background/30">
                     <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+<<<<<<< HEAD
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                       <AlertCircle className="h-3 w-3 text-muted-foreground" />
                       <p>Unconfirmed</p>
                     </div>
@@ -82,8 +132,18 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                   </div>
                 )}
                 {account.votingAuthority > 0 && (
+<<<<<<< HEAD
                   <div className="p-1.5 rounded bg-background/30">
                     <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+<<<<<<< HEAD
+                  <div className="p-1.5 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+=======
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
                       <Vote className="h-3 w-3 text-purple-500" />
                       <p>Voting Auth</p>
                     </div>

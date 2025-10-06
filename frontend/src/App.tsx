@@ -7,6 +7,10 @@ import { useEffect, useState } from 'react';
 import { Header } from './components/Header';
 import { NodeDashboard } from './pages/NodeDashboard';
 import { WalletDashboard } from './pages/WalletDashboard';
+import { ExplorerLanding } from './pages/ExplorerLanding';
+import { BlockDetail } from './pages/BlockDetail';
+import { TransactionDetail } from './pages/TransactionDetail';
+import { AddressView } from './pages/AddressView';
 import { getDashboardData } from './services/api';
 
 function App() {
@@ -33,6 +37,10 @@ function App() {
           <Routes>
             <Route path="/" element={<NodeDashboard />} />
             <Route path="/wallet" element={<WalletDashboard />} />
+            <Route path="/explorer" element={<ExplorerLanding />} />
+            <Route path="/explorer/block/:heightOrHash" element={<BlockDetail />} />
+            <Route path="/explorer/tx/:txhash" element={<TransactionDetail />} />
+            <Route path="/explorer/address/:address" element={<AddressView />} />
           </Routes>
         </div>
       </div>

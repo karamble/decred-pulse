@@ -261,6 +261,10 @@ export const WalletDashboard = () => {
 
       {/* Left Column: Account Balance + Accounts | Right Column: Transaction History */}
       {data && data.walletStatus.status !== 'no_wallet' && (
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
           {/* Left Column */}
           <div className="space-y-6">
@@ -288,6 +292,22 @@ export const WalletDashboard = () => {
             <TransactionHistory />
           )}
         </div>
+<<<<<<< HEAD
+=======
+=======
+        <AccountInfo
+          accountName={data.accountInfo.accountName}
+          totalBalance={data.accountInfo.totalBalance}
+          spendableBalance={data.accountInfo.spendableBalance}
+          immatureBalance={data.accountInfo.immatureBalance}
+          unconfirmedBalance={data.accountInfo.unconfirmedBalance}
+          lockedByTickets={data.accountInfo.lockedByTickets}
+          cumulativeTotal={data.accountInfo.cumulativeTotal}
+          totalSpendable={data.accountInfo.totalSpendable}
+          totalLockedByTickets={data.accountInfo.totalLockedByTickets}
+        />
+>>>>>>> 9f3501f (introduce mini block explorer)
+>>>>>>> 2db1e2c (add transaction history for wallet and arrange dashboard cards (#17))
       )}
 
       {/* Row 2: Ticket Pool | My Tickets */}

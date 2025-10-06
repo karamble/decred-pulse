@@ -78,6 +78,13 @@ func main() {
 	api.HandleFunc("/wallet/rescan", handlers.RescanWalletHandler).Methods("POST")
 	api.HandleFunc("/wallet/sync-progress", handlers.GetSyncProgressHandler).Methods("GET")
 
+	// Explorer routes
+	api.HandleFunc("/explorer/search", handlers.SearchHandler).Methods("GET")
+	api.HandleFunc("/explorer/blocks/recent", handlers.GetRecentBlocksHandler).Methods("GET")
+	api.HandleFunc("/explorer/blocks/{height:[0-9]+}", handlers.GetBlockByHeightHandler).Methods("GET")
+	api.HandleFunc("/explorer/blocks/hash/{hash}", handlers.GetBlockByHashHandler).Methods("GET")
+	api.HandleFunc("/explorer/transactions/{txhash}", handlers.GetTransactionHandler).Methods("GET")
+
 	// CORS configuration
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -93,6 +100,7 @@ func main() {
 	log.Printf("Starting Decred Dashboard API server on %s", address)
 	log.Println("Node endpoints: /api/dashboard, /api/node/*, /api/blockchain/*, /api/network/*")
 	log.Println("Wallet endpoints: /api/wallet/status, /api/wallet/dashboard, /api/wallet/importxpub")
+	log.Println("Explorer endpoints: /api/explorer/search, /api/explorer/blocks/*, /api/explorer/transactions/*")
 	log.Fatal(http.ListenAndServe(address, corsHandler.Handler(r)))
 }
 

@@ -12,13 +12,14 @@ services:
       - dcrd-data:/home/dcrd/.dcrd
       - dcrd-certs:/certs
       - ./dcrd.conf:/home/dcrd/.dcrd/dcrd.conf:ro
+    environment:
+      - DCRD_EXTRA_ARGS=${DCRD_EXTRA_ARGS:---txindex}
     command: >
       --rpcuser=${DCRD_RPC_USER:-decred}
       --rpcpass=${DCRD_RPC_PASS:-decredpass}
       --rpclisten=0.0.0.0:9109
       --rpccert=/certs/rpc.cert
       --rpckey=/certs/rpc.key
-      --txindex
     restart: unless-stopped
     networks:
       - decred-network
