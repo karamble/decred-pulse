@@ -1,4 +1,4 @@
-.PHONY: help start stop restart logs logs-dcrd logs-backend logs-frontend build clean status shell-dcrd shell-backend backup restore
+.PHONY: help start stop restart logs logs-dcrd logs-backend logs-frontend build clean status shell-dcrd shell-backend backup backup-wallet backup-certs restore restore-wallet
 
 # Force bash shell for bash-specific syntax (needed for clean target)
 SHELL := /bin/bash
@@ -137,10 +137,28 @@ backup: ## Backup blockchain data
 	@echo "Creating backup of dcrd data..."
 	@mkdir -p backups
 	docker run --rm \
-		-v umbrel-decred-dash-main_dcrd-data:/data \
+		-v decred-pulse_dcrd-data:/data \
 		-v $(PWD)/backups:/backup \
 		alpine tar czf /backup/dcrd-backup-$$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
 	@echo "Backup created in backups/"
+
+backup-wallet: ## Backup wallet data
+	@echo "Creating backup of wallet data..."
+	@mkdir -p backups
+	docker run --rm \
+		-v decred-pulse_dcrwallet-data:/data \
+		-v $(PWD)/backups:/backup \
+		alpine tar czf /backup/dcrwallet-backup-$$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
+	@echo "Wallet backup created in backups/"
+
+backup-certs: ## Backup certificates
+	@echo "Creating backup of certificates..."
+	@mkdir -p backups
+	docker run --rm \
+		-v decred-pulse_dcrd-certs:/certs \
+		-v $(PWD)/backups:/backup \
+		alpine tar czf /backup/dcrd-certs-$$(date +%Y%m%d-%H%M%S).tar.gz -C /certs .
+	@echo "Certificates backup created in backups/"
 
 restore: ## Restore blockchain data from backup (usage: make restore BACKUP=backups/dcrd-backup-xxx.tar.gz)
 	@if [ -z "$(BACKUP)" ]; then \
@@ -154,11 +172,30 @@ restore: ## Restore blockchain data from backup (usage: make restore BACKUP=back
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
 		docker compose down; \
 		docker run --rm \
-			-v umbrel-decred-dash-main_dcrd-data:/data \
+			-v decred-pulse_dcrd-data:/data \
 			-v $(PWD):/backup \
 			alpine sh -c "rm -rf /data/* && tar xzf /backup/$(BACKUP) -C /data"; \
 		docker compose up -d; \
 		echo "Restored!"; \
+	fi
+
+restore-wallet: ## Restore wallet data from backup (usage: make restore-wallet BACKUP=backups/dcrwallet-backup-xxx.tar.gz)
+	@if [ -z "$(BACKUP)" ]; then \
+		echo "Usage: make restore-wallet BACKUP=backups/dcrwallet-backup-xxx.tar.gz"; \
+		exit 1; \
+	fi
+	@echo "Restoring wallet from $(BACKUP)..."
+	@echo "WARNING: This will overwrite existing wallet data!"
+	@read -p "Are you sure? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		docker compose stop dcrwallet; \
+		docker run --rm \
+			-v decred-pulse_dcrwallet-data:/data \
+			-v $(PWD):/backup \
+			alpine sh -c "rm -rf /data/* && tar xzf /backup/$(BACKUP) -C /data"; \
+		docker compose up -d dcrwallet; \
+		echo "Wallet restored!"; \
 	fi
 
 setup: ## Initial setup (copy env.example to .env)
