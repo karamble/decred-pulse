@@ -167,11 +167,22 @@ export interface AccountInfo {
 export interface WalletTransaction {
   txid: string;
   amount: number;
-  fee: number;
+  fee?: number;
   confirmations: number;
+  blockHash?: string;
+  blockTime?: number;
   time: string;
-  type: string;
-  comment: string;
+  category: string; // "send", "receive", "immature", "generate"
+  txType: string;   // "regular", "ticket", "vote", "revocation"
+  address?: string;
+  account?: string;
+  vout: number;
+  generated?: boolean;
+}
+
+export interface TransactionListResponse {
+  transactions: WalletTransaction[];
+  total: number;
 }
 
 export interface WalletAddress {
@@ -255,6 +266,11 @@ export interface SyncProgressData {
 
 export const getSyncProgress = async (): Promise<SyncProgressData> => {
   const response = await api.get<SyncProgressData>('/wallet/sync-progress');
+  return response.data;
+};
+
+export const getWalletTransactions = async (count: number = 50, from: number = 0): Promise<TransactionListResponse> => {
+  const response = await api.get<TransactionListResponse>(`/wallet/transactions?count=${count}&from=${from}`);
   return response.data;
 };
 

@@ -73,6 +73,7 @@ func main() {
 	// Wallet routes
 	api.HandleFunc("/wallet/status", handlers.GetWalletStatusHandler).Methods("GET")
 	api.HandleFunc("/wallet/dashboard", handlers.GetWalletDashboardHandler).Methods("GET")
+	api.HandleFunc("/wallet/transactions", handlers.ListTransactionsHandler).Methods("GET")
 	api.HandleFunc("/wallet/importxpub", handlers.ImportXpubHandler).Methods("POST")
 	api.HandleFunc("/wallet/rescan", handlers.RescanWalletHandler).Methods("POST")
 	api.HandleFunc("/wallet/sync-progress", handlers.GetSyncProgressHandler).Methods("GET")

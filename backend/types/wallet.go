@@ -46,11 +46,22 @@ type AccountInfo struct {
 type Transaction struct {
 	TxID          string    `json:"txid"`
 	Amount        float64   `json:"amount"`
-	Fee           float64   `json:"fee"`
+	Fee           float64   `json:"fee,omitempty"`
 	Confirmations int64     `json:"confirmations"`
+	BlockHash     string    `json:"blockHash,omitempty"`
+	BlockTime     int64     `json:"blockTime,omitempty"`
 	Time          time.Time `json:"time"`
-	Type          string    `json:"type"` // "send", "receive", "ticket", etc.
-	Comment       string    `json:"comment"`
+	Category      string    `json:"category"` // "send", "receive", "immature", "generate"
+	TxType        string    `json:"txType"`   // "regular", "ticket", "vote", "revocation"
+	Address       string    `json:"address,omitempty"`
+	Account       string    `json:"account,omitempty"`
+	Vout          uint32    `json:"vout"`
+	Generated     bool      `json:"generated,omitempty"`
+}
+
+type TransactionListResponse struct {
+	Transactions []Transaction `json:"transactions"`
+	Total        int           `json:"total"`
 }
 
 type Address struct {
