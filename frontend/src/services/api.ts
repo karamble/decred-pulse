@@ -75,6 +75,10 @@ export interface MempoolInfo {
   txCount: number;
   totalFee: number;
   averageFeeRate: number;
+  tickets: number;
+  votes: number;
+  revocations: number;
+  regularTxs: number;
 }
 
 export interface DashboardData {
