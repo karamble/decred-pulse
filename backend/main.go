@@ -75,6 +75,7 @@ func main() {
 	api.HandleFunc("/wallet/dashboard", handlers.GetWalletDashboardHandler).Methods("GET")
 	api.HandleFunc("/wallet/importxpub", handlers.ImportXpubHandler).Methods("POST")
 	api.HandleFunc("/wallet/rescan", handlers.RescanWalletHandler).Methods("POST")
+	api.HandleFunc("/wallet/sync-progress", handlers.GetSyncProgressHandler).Methods("GET")
 
 	// CORS configuration
 	corsHandler := cors.New(cors.Options{

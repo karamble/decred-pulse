@@ -213,5 +213,18 @@ export const triggerRescan = async (): Promise<any> => {
   return response.data;
 };
 
+export interface SyncProgressData {
+  isRescanning: boolean;
+  scanHeight: number;
+  chainHeight: number;
+  progress: number;
+  message: string;
+}
+
+export const getSyncProgress = async (): Promise<SyncProgressData> => {
+  const response = await api.get<SyncProgressData>('/wallet/sync-progress');
+  return response.data;
+};
+
 export default api;
 

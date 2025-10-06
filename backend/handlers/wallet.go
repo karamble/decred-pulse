@@ -198,3 +198,42 @@ func RescanWalletHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+// GetSyncProgressHandler handles requests for wallet sync progress from log files
+func GetSyncProgressHandler(w http.ResponseWriter, r *http.Request) {
+	// Get sync progress from log file parsing
+	isRescanning, scanHeight, err := services.ParseWalletLogsForRescan()
+	if err != nil {
+		log.Printf("Error parsing wallet logs: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get chain height from dcrd for progress calculation
+	var progress float64 = 100.0
+	var chainHeight int64 = 0
+	var message string = "No active rescan"
+
+	if isRescanning && rpc.DcrdClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		height, err := rpc.DcrdClient.GetBlockCount(ctx)
+		if err == nil {
+			chainHeight = height
+			progress = (float64(scanHeight) / float64(chainHeight)) * 100
+			message = fmt.Sprintf("Rescanning... %d/%d blocks", scanHeight, chainHeight)
+		}
+	}
+
+	response := types.SyncProgressResponse{
+		IsRescanning: isRescanning,
+		ScanHeight:   scanHeight,
+		ChainHeight:  chainHeight,
+		Progress:     progress,
+		Message:      message,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}

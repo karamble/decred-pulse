@@ -280,6 +280,10 @@ func FetchSupplyInfo() (*types.SupplyInfo, error) {
 	stakedPercent := float64(0)
 	treasuryBalance := "N/A"
 
+	// Check if node is fully synced before calling TicketPoolValue
+	chainInfo, err := rpc.DcrdClient.GetBlockChainInfo(ctx)
+	isSynced := err == nil && !chainInfo.InitialBlockDownload
+
 	coinSupply, err := rpc.DcrdClient.GetCoinSupply(ctx)
 	if err == nil && coinSupply > 0 {
 		// Convert atoms to DCR and format with commas
@@ -287,13 +291,16 @@ func FetchSupplyInfo() (*types.SupplyInfo, error) {
 		circulatingSupply = utils.FormatDCRAmount(coinSupplyDCR)
 
 		// Calculate staked supply from ticket pool
-		ticketPoolValue, err := rpc.DcrdClient.GetTicketPoolValue(ctx)
-		if err == nil && ticketPoolValue > 0 {
-			lockedDCR := ticketPoolValue.ToCoin()
-			stakedSupply = utils.FormatDCRAmount(lockedDCR)
+		// Only call GetTicketPoolValue if node is fully synced to avoid nil pointer panic during initial sync
+		if isSynced {
+			ticketPoolValue, err := rpc.DcrdClient.GetTicketPoolValue(ctx)
+			if err == nil && ticketPoolValue > 0 {
+				lockedDCR := ticketPoolValue.ToCoin()
+				stakedSupply = utils.FormatDCRAmount(lockedDCR)
 
-			if coinSupplyDCR > 0 {
-				stakedPercent = (lockedDCR / coinSupplyDCR) * 100
+				if coinSupplyDCR > 0 {
+					stakedPercent = (lockedDCR / coinSupplyDCR) * 100
+				}
 			}
 		}
 	}
@@ -318,11 +325,12 @@ func FetchSupplyInfo() (*types.SupplyInfo, error) {
 	}, nil
 }
 
-
-
-
 func FetchStakingInfo() (*types.StakingInfo, error) {
 	ctx := context.Background()
+
+	// Check if node is fully synced before calling TicketPoolValue
+	chainInfo, err := rpc.DcrdClient.GetBlockChainInfo(ctx)
+	isSynced := err == nil && !chainInfo.InitialBlockDownload
 
 	// Get stake difficulty (ticket price) - direct RPC method
 	stakeDiff, err := rpc.DcrdClient.GetStakeDifficulty(ctx)
@@ -342,10 +350,13 @@ func FetchStakingInfo() (*types.StakingInfo, error) {
 
 	// Get ticket pool value (total locked DCR) - direct RPC method
 	// Returns dcrutil.Amount which needs to be converted to float64 DCR
+	// Only call GetTicketPoolValue if node is fully synced to avoid nil pointer panic during initial sync
 	lockedDCR := float64(0)
-	poolValue, err := rpc.DcrdClient.GetTicketPoolValue(ctx)
-	if err == nil {
-		lockedDCR = poolValue.ToCoin()
+	if isSynced {
+		poolValue, err := rpc.DcrdClient.GetTicketPoolValue(ctx)
+		if err == nil {
+			lockedDCR = poolValue.ToCoin()
+		}
 	}
 
 	// Get total coin supply for participation rate calculation - direct RPC method
