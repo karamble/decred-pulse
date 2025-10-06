@@ -2,7 +2,7 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-import { Wallet, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, AlertCircle, Lock } from 'lucide-react';
 
 interface AccountInfoProps {
   accountName: string;
@@ -10,6 +10,10 @@ interface AccountInfoProps {
   spendableBalance: number;
   immatureBalance: number;
   unconfirmedBalance: number;
+  lockedByTickets?: number;
+  cumulativeTotal?: number;
+  totalSpendable?: number;
+  totalLockedByTickets?: number;
 }
 
 export const AccountInfo = ({
@@ -17,12 +21,36 @@ export const AccountInfo = ({
   totalBalance,
   spendableBalance,
   immatureBalance,
-  unconfirmedBalance
+  unconfirmedBalance,
+  lockedByTickets = 0,
+  cumulativeTotal,
+  totalSpendable,
+  totalLockedByTickets
 }: AccountInfoProps) => {
   const formatDCR = (amount: number) => {
     return amount.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 8
+    });
+  };
+
+  const formatDCRWithDecimals = (amount: number) => {
+    const formatted = amount.toFixed(8);
+    const [integerPart, decimalPart] = formatted.split('.');
+    const mainDecimals = decimalPart.substring(0, 2);
+    const extraDecimals = decimalPart.substring(2);
+    
+    return {
+      integer: parseInt(integerPart).toLocaleString('en-US'),
+      mainDecimals,
+      extraDecimals
+    };
+  };
+
+  const formatDCR2Decimals = (amount: number) => {
+    return amount.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     });
   };
 
@@ -38,11 +66,20 @@ export const AccountInfo = ({
         </div>
       </div>
 
-      {/* Total Balance */}
+      {/* Total Balance - Use cumulativeTotal if available */}
       <div className="mb-6 p-4 rounded-lg bg-primary/5 border border-primary/10">
-        <p className="text-sm text-muted-foreground mb-2">Total Balance</p>
+        <p className="text-sm text-muted-foreground mb-2">Cumulative Total</p>
         <p className="text-4xl font-bold text-primary">
-          {formatDCR(totalBalance)} <span className="text-2xl">DCR</span>
+          {(() => {
+            const parts = formatDCRWithDecimals(cumulativeTotal || totalBalance);
+            return (
+              <>
+                {parts.integer}.{parts.mainDecimals}
+                <span className="text-xl opacity-60">{parts.extraDecimals}</span>
+                <span className="text-2xl"> DCR</span>
+              </>
+            );
+          })()}
         </p>
       </div>
 
@@ -51,10 +88,20 @@ export const AccountInfo = ({
         <div className="flex items-center justify-between p-3 rounded-lg bg-success/5 border border-success/10">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-success" />
-            <span className="text-sm font-medium">Spendable</span>
+            <span className="text-sm font-medium">Total Spendable</span>
           </div>
-          <span className="font-semibold text-success">{formatDCR(spendableBalance)} DCR</span>
+          <span className="font-semibold text-success">{formatDCR2Decimals(totalSpendable || spendableBalance)} DCR</span>
         </div>
+
+        {(totalLockedByTickets || lockedByTickets) > 0 && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/5 border border-blue-500/10">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-medium">Locked by Tickets</span>
+            </div>
+            <span className="font-semibold text-blue-500">{formatDCR2Decimals(totalLockedByTickets || lockedByTickets)} DCR</span>
+          </div>
+        )}
 
         {immatureBalance > 0 && (
           <div className="flex items-center justify-between p-3 rounded-lg bg-warning/5 border border-warning/10">

@@ -266,6 +266,10 @@ export const WalletDashboard = () => {
           spendableBalance={data.accountInfo.spendableBalance}
           immatureBalance={data.accountInfo.immatureBalance}
           unconfirmedBalance={data.accountInfo.unconfirmedBalance}
+          lockedByTickets={data.accountInfo.lockedByTickets}
+          cumulativeTotal={data.accountInfo.cumulativeTotal}
+          totalSpendable={data.accountInfo.totalSpendable}
+          totalLockedByTickets={data.accountInfo.totalLockedByTickets}
         />
       )}
 

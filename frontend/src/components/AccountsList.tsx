@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { AccountInfo } from '../services/api';
-import { Wallet } from 'lucide-react';
+import { Wallet, Coins, Lock, Clock, AlertCircle, Vote } from 'lucide-react';
 
 interface AccountsListProps {
   accounts: AccountInfo[];
@@ -40,25 +40,56 @@ export const AccountsList = ({ accounts }: AccountsListProps) => {
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-semibold text-primary">
-                    {account.totalBalance.toFixed(8)} DCR
+                    {account.totalBalance.toFixed(2)} DCR
                   </p>
                   <p className="text-xs text-muted-foreground">Total Balance</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                 <div className="p-2 rounded bg-background/30">
-                  <p className="text-muted-foreground mb-1">Spendable</p>
-                  <p className="font-medium text-foreground">{account.spendableBalance.toFixed(8)}</p>
+                  <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                    <Coins className="h-3 w-3 text-success" />
+                    <p>Spendable</p>
+                  </div>
+                  <p className="font-medium text-success">{account.spendableBalance.toFixed(2)}</p>
                 </div>
-                <div className="p-2 rounded bg-background/30">
-                  <p className="text-muted-foreground mb-1">Immature</p>
-                  <p className="font-medium text-foreground">{account.immatureBalance.toFixed(8)}</p>
-                </div>
-                <div className="p-2 rounded bg-background/30">
-                  <p className="text-muted-foreground mb-1">Unconfirmed</p>
-                  <p className="font-medium text-foreground">{account.unconfirmedBalance.toFixed(8)}</p>
-                </div>
+                {account.lockedByTickets > 0 && (
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                      <Lock className="h-3 w-3 text-blue-500" />
+                      <p>Locked</p>
+                    </div>
+                    <p className="font-medium text-blue-500">{account.lockedByTickets.toFixed(2)}</p>
+                  </div>
+                )}
+                {account.immatureBalance > 0 && (
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                      <Clock className="h-3 w-3 text-warning" />
+                      <p>Immature</p>
+                    </div>
+                    <p className="font-medium text-warning">{account.immatureBalance.toFixed(2)}</p>
+                  </div>
+                )}
+                {account.unconfirmedBalance > 0 && (
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                      <AlertCircle className="h-3 w-3 text-muted-foreground" />
+                      <p>Unconfirmed</p>
+                    </div>
+                    <p className="font-medium text-muted-foreground">{account.unconfirmedBalance.toFixed(2)}</p>
+                  </div>
+                )}
+                {account.votingAuthority > 0 && (
+                  <div className="p-2 rounded bg-background/30">
+                    <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                      <Vote className="h-3 w-3 text-purple-500" />
+                      <p>Voting Auth</p>
+                    </div>
+                    <p className="font-medium text-purple-500">{account.votingAuthority.toFixed(2)}</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}

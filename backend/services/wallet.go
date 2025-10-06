@@ -322,22 +322,29 @@ func FetchAccountInfo() (*types.AccountInfo, error) {
 }
 
 func FetchAccountInfoWithContext(ctx context.Context) (*types.AccountInfo, error) {
-	// Get balance using getbalance (no arguments for default account total balance)
+	// Get balance using getbalance (no arguments for all accounts)
 	result, err := rpc.WalletClient.RawRequest(ctx, "getbalance", []json.RawMessage{})
 	if err != nil {
 		log.Printf("Warning: Failed to get balance: %v", err)
 		return &types.AccountInfo{
-			AccountName:        "default",
+			AccountName:        "Total",
 			TotalBalance:       0,
 			SpendableBalance:   0,
 			ImmatureBalance:    0,
 			UnconfirmedBalance: 0,
+			LockedByTickets:    0,
 			AccountNumber:      0,
 		}, nil
 	}
 
-	// Parse the balance response structure
-	// getbalance returns: {"balances":[{account info},...], "blockhash":"..."}
+	// Parse the full balance response structure
+	// getbalance returns: {
+	//   "balances":[{account info},...],
+	//   "blockhash":"...",
+	//   "totallockedbytickets": X,
+	//   "totalspendable": Y,
+	//   "cumulativetotal": Z
+	// }
 	type AccountBalance struct {
 		AccountName             string  `json:"accountname"`
 		ImmatureCoinbaseRewards float64 `json:"immaturecoinbaserewards"`
@@ -349,43 +356,54 @@ func FetchAccountInfoWithContext(ctx context.Context) (*types.AccountInfo, error
 		VotingAuthority         float64 `json:"votingauthority"`
 	}
 	type BalanceResponse struct {
-		Balances  []AccountBalance `json:"balances"`
-		BlockHash string           `json:"blockhash"`
+		Balances             []AccountBalance `json:"balances"`
+		BlockHash            string           `json:"blockhash"`
+		TotalLockedByTickets float64          `json:"totallockedbytickets"`
+		TotalSpendable       float64          `json:"totalspendable"`
+		CumulativeTotal      float64          `json:"cumulativetotal"`
 	}
 
 	var balanceResp BalanceResponse
 	if err := json.Unmarshal(result, &balanceResp); err != nil {
 		log.Printf("Warning: Failed to unmarshal balance response: %v", err)
 		return &types.AccountInfo{
-			AccountName:        "default",
+			AccountName:        "Total",
 			TotalBalance:       0,
 			SpendableBalance:   0,
 			ImmatureBalance:    0,
 			UnconfirmedBalance: 0,
+			LockedByTickets:    0,
 			AccountNumber:      0,
 		}, nil
 	}
 
-	// Sum balances across all accounts (or use first account)
-	total := 0.0
-	spendable := 0.0
+	// Sum immature and unconfirmed balances across all accounts
 	immature := 0.0
 	unconfirmed := 0.0
+	lockedByTickets := 0.0
+	votingAuthority := 0.0
 
 	for _, acct := range balanceResp.Balances {
-		total += acct.Total
-		spendable += acct.Spendable
 		immature += acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration
 		unconfirmed += acct.Unconfirmed
+		lockedByTickets += acct.LockedByTickets
+		votingAuthority += acct.VotingAuthority
 	}
 
+	// Return wallet-wide totals with granular breakdown
 	return &types.AccountInfo{
-		AccountName:        "default",
-		TotalBalance:       total,
-		SpendableBalance:   spendable,
+		AccountName:        "Total",
+		TotalBalance:       balanceResp.CumulativeTotal,
+		SpendableBalance:   balanceResp.TotalSpendable,
 		ImmatureBalance:    immature,
 		UnconfirmedBalance: unconfirmed,
+		LockedByTickets:    balanceResp.TotalLockedByTickets,
+		VotingAuthority:    votingAuthority,
 		AccountNumber:      0,
+		// Wallet-wide totals
+		CumulativeTotal:      balanceResp.CumulativeTotal,
+		TotalSpendable:       balanceResp.TotalSpendable,
+		TotalLockedByTickets: balanceResp.TotalLockedByTickets,
 	}, nil
 }
 
@@ -423,12 +441,16 @@ func FetchAllAccounts(ctx context.Context) ([]types.AccountInfo, error) {
 	accounts := make([]types.AccountInfo, 0, len(balanceResp.Balances))
 	for _, acct := range balanceResp.Balances {
 		accounts = append(accounts, types.AccountInfo{
-			AccountName:        acct.AccountName,
-			TotalBalance:       acct.Total,
-			SpendableBalance:   acct.Spendable,
-			ImmatureBalance:    acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration,
-			UnconfirmedBalance: acct.Unconfirmed,
-			AccountNumber:      0, // Account numbers not reliably available from RPC
+			AccountName:             acct.AccountName,
+			TotalBalance:            acct.Total,
+			SpendableBalance:        acct.Spendable,
+			ImmatureBalance:         acct.ImmatureCoinbaseRewards + acct.ImmatureStakeGeneration,
+			UnconfirmedBalance:      acct.Unconfirmed,
+			LockedByTickets:         acct.LockedByTickets,
+			VotingAuthority:         acct.VotingAuthority,
+			ImmatureCoinbaseRewards: acct.ImmatureCoinbaseRewards,
+			ImmatureStakeGeneration: acct.ImmatureStakeGeneration,
+			AccountNumber:           0, // Account numbers not reliably available from RPC
 		})
 	}
 
