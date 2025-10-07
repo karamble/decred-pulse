@@ -96,3 +96,12 @@ type SearchResult struct {
 	Data  interface{} `json:"data,omitempty"`
 	Error string      `json:"error,omitempty"`
 }
+
+// AddressInfo for address detail view
+type AddressInfo struct {
+	Address  string   `json:"address"`
+	IsValid  bool     `json:"isValid"`
+	Exists   bool     `json:"exists"`
+	Tickets  []string `json:"tickets"`
+	HasIndex bool     `json:"hasIndex"` // whether address indexing is enabled
+}

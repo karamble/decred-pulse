@@ -85,6 +85,14 @@ export interface SearchResult {
   error?: string;
 }
 
+export interface AddressInfo {
+  address: string;
+  isValid: boolean;
+  exists: boolean;
+  tickets: string[];
+  hasIndex: boolean;
+}
+
 // API Functions
 
 export async function searchExplorer(query: string): Promise<SearchResult> {
@@ -123,6 +131,14 @@ export async function getTransaction(txhash: string): Promise<TransactionDetail>
   const response = await fetch(`${API_BASE_URL}/explorer/transactions/${txhash}`);
   if (!response.ok) {
     throw new Error('Transaction not found');
+  }
+  return response.json();
+}
+
+export async function getAddressInfo(address: string): Promise<AddressInfo> {
+  const response = await fetch(`${API_BASE_URL}/explorer/address/${address}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch address information');
   }
   return response.json();
 }

@@ -648,3 +648,73 @@ func categorizeTransactionTyped(vin []struct {
 
 	return "regular"
 }
+
+// FetchAddressInfo gets limited information about an address
+// Note: This uses only basic RPC methods available without --addrindex
+func FetchAddressInfo(ctx context.Context, address string) (*types.AddressInfo, error) {
+	if rpc.DcrdClient == nil {
+		return nil, fmt.Errorf("dcrd client not available")
+	}
+
+	info := &types.AddressInfo{
+		Address:  address,
+		IsValid:  false,
+		Exists:   false,
+		Tickets:  []string{},
+		HasIndex: false, // We don't have address indexing enabled
+	}
+
+	// 1. Validate address format
+	validateResult, err := rpc.DcrdClient.RawRequest(ctx, "validateaddress", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, address)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate address: %w", err)
+	}
+
+	var validateResp struct {
+		IsValid bool   `json:"isvalid"`
+		Address string `json:"address,omitempty"`
+	}
+	if err := json.Unmarshal(validateResult, &validateResp); err != nil {
+		return nil, fmt.Errorf("failed to parse validate response: %w", err)
+	}
+
+	info.IsValid = validateResp.IsValid
+	if !info.IsValid {
+		return info, nil // Return early if invalid
+	}
+
+	// 2. Check if address exists on blockchain
+	existsResult, err := rpc.DcrdClient.RawRequest(ctx, "existsaddress", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, address)),
+	})
+	if err != nil {
+		log.Printf("Warning: Failed to check address existence: %v", err)
+	} else {
+		var exists bool
+		if err := json.Unmarshal(existsResult, &exists); err == nil {
+			info.Exists = exists
+		}
+	}
+
+	// 3. Get tickets owned by this address
+	ticketsResult, err := rpc.DcrdClient.RawRequest(ctx, "ticketsforaddress", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, address)),
+	})
+	if err != nil {
+		log.Printf("Warning: Failed to get tickets for address: %v", err)
+	} else {
+		var ticketsResp struct {
+			Tickets []string `json:"tickets"`
+		}
+		if err := json.Unmarshal(ticketsResult, &ticketsResp); err == nil {
+			info.Tickets = ticketsResp.Tickets
+			if info.Tickets == nil {
+				info.Tickets = []string{} // Ensure it's an empty array, not null
+			}
+		}
+	}
+
+	return info, nil
+}

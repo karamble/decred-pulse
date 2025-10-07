@@ -84,6 +84,7 @@ func main() {
 	api.HandleFunc("/explorer/blocks/{height:[0-9]+}", handlers.GetBlockByHeightHandler).Methods("GET")
 	api.HandleFunc("/explorer/blocks/hash/{hash}", handlers.GetBlockByHashHandler).Methods("GET")
 	api.HandleFunc("/explorer/transactions/{txhash}", handlers.GetTransactionHandler).Methods("GET")
+	api.HandleFunc("/explorer/address/{address}", handlers.GetAddressHandler).Methods("GET")
 
 	// CORS configuration
 	corsHandler := cors.New(cors.Options{

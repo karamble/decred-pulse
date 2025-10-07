@@ -136,3 +136,27 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tx)
 }
+
+// GetAddressHandler returns address information (limited without addrindex)
+func GetAddressHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	address := vars["address"]
+
+	if address == "" {
+		http.Error(w, "Missing address", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	info, err := services.FetchAddressInfo(ctx, address)
+	if err != nil {
+		log.Printf("Error fetching address info for %s: %v", address, err)
+		http.Error(w, "Failed to fetch address information", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
