@@ -27,11 +27,18 @@ type NodeStatus struct {
 }
 
 type BlockchainInfo struct {
-	BlockHeight int64   `json:"blockHeight"`
-	BlockHash   string  `json:"blockHash"`
-	Difficulty  float64 `json:"difficulty"`
-	ChainSize   int64   `json:"chainSize"`
-	BlockTime   string  `json:"blockTime"`
+	BlockHeight  int64         `json:"blockHeight"`
+	BlockHash    string        `json:"blockHash"`
+	Difficulty   float64       `json:"difficulty"`
+	ChainSize    int64         `json:"chainSize"`
+	BlockTime    string        `json:"blockTime"`
+	RecentBlocks []RecentBlock `json:"recentBlocks"`
+}
+
+type RecentBlock struct {
+	Height    int64  `json:"height"`
+	Hash      string `json:"hash"`
+	Timestamp int64  `json:"timestamp"` // Unix timestamp
 }
 
 type NetworkInfo struct {
@@ -62,6 +69,7 @@ type SupplyInfo struct {
 
 type StakingInfo struct {
 	TicketPrice       float64 `json:"ticketPrice"`
+	NextTicketPrice   float64 `json:"nextTicketPrice"`
 	PoolSize          uint32  `json:"poolSize"`
 	LockedDCR         float64 `json:"lockedDCR"`
 	ParticipationRate float64 `json:"participationRate"`
@@ -82,7 +90,8 @@ type MempoolInfo struct {
 	Tickets        int     `json:"tickets"`     // Ticket purchases in mempool
 	Votes          int     `json:"votes"`       // Votes in mempool
 	Revocations    int     `json:"revocations"` // Revocations in mempool
-	RegularTxs     int     `json:"regularTxs"`  // Regular transactions
+	RegularTxs     int     `json:"regularTxs"`  // Regular transactions (non-CoinJoin)
+	CoinJoinTxs    int     `json:"coinJoinTxs"` // CoinJoin/StakeShuffle transactions
 }
 
 // RPC connection types

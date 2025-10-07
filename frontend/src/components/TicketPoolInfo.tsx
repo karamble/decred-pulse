@@ -7,7 +7,6 @@ import { TrendingUp, Target, Activity } from 'lucide-react';
 interface TicketPoolInfoProps {
   poolSize: number;
   currentDifficulty: number;
-  nextDifficulty: number;
   estimatedMin: number;
   estimatedMax: number;
   estimatedExpected: number;
@@ -17,7 +16,6 @@ interface TicketPoolInfoProps {
 export const TicketPoolInfo = ({ 
   poolSize,
   currentDifficulty,
-  nextDifficulty,
   estimatedMin,
   estimatedMax,
   estimatedExpected,
@@ -66,16 +64,16 @@ export const TicketPoolInfo = ({
           <div className="text-xs text-muted-foreground mt-1">Ticket price now</div>
         </div>
 
-        {/* Next Difficulty */}
+        {/* Expected Next Difficulty */}
         <div className="p-4 rounded-lg bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground font-medium">Next Price</span>
+            <span className="text-sm text-muted-foreground font-medium">Expected Next</span>
             <TrendingUp className="h-4 w-4 text-primary" />
           </div>
-          <div className="text-2xl font-bold">{nextDifficulty.toFixed(2)} DCR</div>
+          <div className="text-2xl font-bold">{estimatedExpected.toFixed(2)} DCR</div>
           <div className="text-xs text-muted-foreground mt-1">
-            {nextDifficulty > currentDifficulty ? '↑' : nextDifficulty < currentDifficulty ? '↓' : '='} 
-            {' '}{Math.abs(nextDifficulty - currentDifficulty).toFixed(2)} DCR
+            {estimatedExpected > currentDifficulty ? '↑' : estimatedExpected < currentDifficulty ? '↓' : '='} 
+            {' '}{Math.abs(estimatedExpected - currentDifficulty).toFixed(2)} DCR
           </div>
         </div>
       </div>
@@ -83,7 +81,7 @@ export const TicketPoolInfo = ({
       {/* Estimated Range */}
       <div className="mt-4 p-4 rounded-lg bg-info/5 border border-info/10">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-info">Estimated Next Price Range</span>
+          <span className="text-sm font-medium text-info">Expected Price Range</span>
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>

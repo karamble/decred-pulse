@@ -192,12 +192,36 @@ func FetchBlockchainInfo() (*types.BlockchainInfo, error) {
 	timeSinceBlock := time.Since(blockHeader.Timestamp)
 	blockTime := fmt.Sprintf("%dm %ds", int(timeSinceBlock.Minutes()), int(timeSinceBlock.Seconds())%60)
 
+	// Fetch last 3 blocks for the recent blocks list
+	recentBlocks := make([]types.RecentBlock, 0, 3)
+	currentHeight := info.Blocks
+	for i := int64(0); i < 3 && currentHeight-i >= 0; i++ {
+		blockHash, err := rpc.DcrdClient.GetBlockHash(ctx, currentHeight-i)
+		if err != nil {
+			log.Printf("Warning: Failed to get block hash for height %d: %v", currentHeight-i, err)
+			continue
+		}
+
+		header, err := rpc.DcrdClient.GetBlockHeader(ctx, blockHash)
+		if err != nil {
+			log.Printf("Warning: Failed to get block header for hash %s: %v", blockHash.String(), err)
+			continue
+		}
+
+		recentBlocks = append(recentBlocks, types.RecentBlock{
+			Height:    currentHeight - i,
+			Hash:      blockHash.String(),
+			Timestamp: header.Timestamp.Unix(),
+		})
+	}
+
 	return &types.BlockchainInfo{
-		BlockHeight: info.Blocks,
-		BlockHash:   bestBlockHash.String(),
-		Difficulty:  float64(info.Difficulty),
-		ChainSize:   0, // Would need to calculate from disk usage
-		BlockTime:   blockTime,
+		BlockHeight:  info.Blocks,
+		BlockHash:    bestBlockHash.String(),
+		Difficulty:   float64(info.Difficulty),
+		ChainSize:    0, // Would need to calculate from disk usage
+		BlockTime:    blockTime,
+		RecentBlocks: recentBlocks,
 	}, nil
 }
 
@@ -334,12 +358,23 @@ func FetchStakingInfo() (*types.StakingInfo, error) {
 	chainInfo, err := rpc.DcrdClient.GetBlockChainInfo(ctx)
 	isSynced := err == nil && !chainInfo.InitialBlockDownload
 
-	// Get stake difficulty (ticket price) - direct RPC method
-	stakeDiff, err := rpc.DcrdClient.GetStakeDifficulty(ctx)
+	// Get stake difficulty (ticket price) - using RawRequest to get both current and next
+	ticketPrice := float64(0)
+	nextTicketPrice := float64(0)
+
+	result, err := rpc.DcrdClient.RawRequest(ctx, "getstakedifficulty", []json.RawMessage{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stake difficulty: %v", err)
 	}
-	ticketPrice := stakeDiff.CurrentStakeDifficulty
+
+	var diffResult struct {
+		Current float64 `json:"current"`
+		Next    float64 `json:"next"`
+	}
+	if err := json.Unmarshal(result, &diffResult); err == nil {
+		ticketPrice = diffResult.Current
+		nextTicketPrice = diffResult.Next
+	}
 
 	// Get live tickets from pool - direct RPC method
 	// LiveTickets returns []*chainhash.Hash directly
@@ -373,6 +408,7 @@ func FetchStakingInfo() (*types.StakingInfo, error) {
 
 	return &types.StakingInfo{
 		TicketPrice:       ticketPrice,
+		NextTicketPrice:   nextTicketPrice,
 		PoolSize:          poolSize,
 		LockedDCR:         lockedDCR,
 		ParticipationRate: participationRate,
@@ -429,7 +465,7 @@ func FetchMempoolInfo() (*types.MempoolInfo, error) {
 	}
 
 	// Analyze mempool transactions to categorize staking transactions
-	tickets, votes, revocations, regular := analyzeMempoolTransactions(ctx)
+	tickets, votes, revocations, regular, coinjoins := analyzeMempoolTransactions(ctx)
 
 	return &types.MempoolInfo{
 		Size:           uint64(mempoolResp.Size),
@@ -441,28 +477,30 @@ func FetchMempoolInfo() (*types.MempoolInfo, error) {
 		Votes:          votes,
 		Revocations:    revocations,
 		RegularTxs:     regular,
+		CoinJoinTxs:    coinjoins,
 	}, nil
 }
 
-func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocations, regular int) {
+func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocations, regular, coinjoins int) {
 	// Get current stake difficulty (ticket price)
 	stakeDiff := getStakeDifficulty(ctx)
 	if stakeDiff <= 0 {
 		log.Printf("Warning: Could not get stake difficulty, falling back to transaction counting")
-		return analyzeMempoolTransactionsLegacy(ctx)
+		t, v, r, reg := analyzeMempoolTransactionsLegacy(ctx)
+		return t, v, r, reg, 0
 	}
 
 	// Get all transaction hashes from mempool
 	result, err := rpc.DcrdClient.RawRequest(ctx, "getrawmempool", []json.RawMessage{})
 	if err != nil {
 		log.Printf("Warning: Failed to get raw mempool: %v", err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 
 	var txHashes []string
 	if err := json.Unmarshal(result, &txHashes); err != nil {
 		log.Printf("Warning: Failed to unmarshal mempool hashes: %v", err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 
 	// Analyze each transaction (limit to reasonable number to avoid performance issues)
@@ -475,7 +513,7 @@ func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocation
 	var totalStakeValue float64
 
 	for _, txHash := range txHashes {
-		txType, stakeValue := getTransactionTypeAndStakeValue(ctx, txHash)
+		txType, stakeValue, isCoinJoin := getTransactionTypeAndStakeValueWithCoinJoin(ctx, txHash)
 		switch txType {
 		case "ticket":
 			totalStakeValue += stakeValue
@@ -484,7 +522,11 @@ func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocation
 		case "revocation":
 			revocations++
 		default:
-			regular++
+			if isCoinJoin {
+				coinjoins++
+			} else {
+				regular++
+			}
 		}
 	}
 
@@ -494,7 +536,7 @@ func analyzeMempoolTransactions(ctx context.Context) (tickets, votes, revocation
 		tickets = int(math.Round(totalStakeValue / stakeDiff))
 	}
 
-	return tickets, votes, revocations, regular
+	return tickets, votes, revocations, regular, coinjoins
 }
 
 // getStakeDifficulty fetches the current ticket price from dcrd
@@ -516,19 +558,19 @@ func getStakeDifficulty(ctx context.Context) float64 {
 	return diffResult.Current
 }
 
-// getTransactionTypeAndStakeValue returns the transaction type and total stake submission value
-func getTransactionTypeAndStakeValue(ctx context.Context, txHash string) (string, float64) {
+// getTransactionTypeAndStakeValueWithCoinJoin returns the transaction type, stake value, and whether it's a CoinJoin
+func getTransactionTypeAndStakeValueWithCoinJoin(ctx context.Context, txHash string) (string, float64, bool) {
 	// Get raw transaction
 	rawTxResult, err := rpc.DcrdClient.RawRequest(ctx, "getrawtransaction", []json.RawMessage{
 		json.RawMessage(fmt.Sprintf(`"%s"`, txHash)),
 	})
 	if err != nil {
-		return "regular", 0
+		return "regular", 0, false
 	}
 
 	var rawTxHex string
 	if err := json.Unmarshal(rawTxResult, &rawTxHex); err != nil {
-		return "regular", 0
+		return "regular", 0, false
 	}
 
 	// Decode the transaction
@@ -536,7 +578,7 @@ func getTransactionTypeAndStakeValue(ctx context.Context, txHash string) (string
 		json.RawMessage(fmt.Sprintf(`"%s"`, rawTxHex)),
 	})
 	if err != nil {
-		return "regular", 0
+		return "regular", 0, false
 	}
 
 	// Parse decoded transaction
@@ -558,12 +600,12 @@ func getTransactionTypeAndStakeValue(ctx context.Context, txHash string) (string
 
 	var decoded DecodedTx
 	if err := json.Unmarshal(decodedResult, &decoded); err != nil {
-		return "regular", 0
+		return "regular", 0, false
 	}
 
 	// Check for vote (SSGen) - has stakebase input
 	if len(decoded.Vin) > 0 && decoded.Vin[0].Stakebase != "" {
-		return "vote", 0
+		return "vote", 0, false
 	}
 
 	// Check outputs for stake transaction types and sum stakesubmission values
@@ -582,27 +624,48 @@ func getTransactionTypeAndStakeValue(ctx context.Context, txHash string) (string
 
 		// Vote (SSGen) - already caught by stakebase check above
 		if scriptType == "stakegen-pubkeyhash" || scriptType == "stakegen" {
-			return "vote", 0
+			return "vote", 0, false
 		}
 		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSGEN") {
-			return "vote", 0
+			return "vote", 0, false
 		}
 
 		// Revocation (SSRtx)
 		if scriptType == "stakerevoke" {
-			return "revocation", 0
+			return "revocation", 0, false
 		}
 		if len(asm) >= 8 && strings.HasPrefix(asm, "OP_SSRTX") {
-			return "revocation", 0
+			return "revocation", 0, false
 		}
 	}
 
 	// If we found stakesubmission outputs, it's a ticket transaction
 	if hasStakeSubmission {
-		return "ticket", totalStakeValue
+		return "ticket", totalStakeValue, false
 	}
 
-	return "regular", 0
+	// Check if it's a CoinJoin transaction
+	// Heuristic: 3+ inputs, 3+ outputs, 3+ outputs with matching values
+	isCoinJoin := false
+	if len(decoded.Vin) >= 3 && len(decoded.Vout) >= 3 {
+		// Count output values (rounded to avoid floating point issues)
+		outputValues := make(map[int64]int)
+		for _, vout := range decoded.Vout {
+			rounded := int64(vout.Value * 1e8) // Convert to atoms
+			outputValues[rounded]++
+		}
+
+		// If we have 3+ outputs with the same value, likely a CoinJoin
+		for _, count := range outputValues {
+			if count >= 3 {
+				isCoinJoin = true
+				break
+			}
+		}
+	}
+
+	// Regular transaction or CoinJoin
+	return "regular", 0, isCoinJoin
 }
 
 // analyzeMempoolTransactionsLegacy is the old transaction-counting method (fallback)

@@ -105,8 +105,16 @@ export const TransactionHistory = () => {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
+      <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+            <Clock className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Transaction History</h2>
+            <p className="text-sm text-muted-foreground">Recent wallet activity</p>
+          </div>
+        </div>
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <span className="ml-3 text-muted-foreground">Loading transactions...</span>
@@ -117,8 +125,16 @@ export const TransactionHistory = () => {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
+      <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+            <Clock className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Transaction History</h2>
+            <p className="text-sm text-muted-foreground">Recent wallet activity</p>
+          </div>
+        </div>
         <div className="text-center py-8 text-muted-foreground">
           <p>{error}</p>
         </div>
@@ -128,8 +144,16 @@ export const TransactionHistory = () => {
 
   if (transactions.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
+      <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+            <Clock className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Transaction History</h2>
+            <p className="text-sm text-muted-foreground">Recent wallet activity</p>
+          </div>
+        </div>
         <div className="text-center py-8 text-muted-foreground">
           <p>No transactions found</p>
           <p className="text-sm mt-2">Transactions will appear here once your wallet receives or sends DCR</p>
@@ -139,10 +163,18 @@ export const TransactionHistory = () => {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold">Transaction History</h2>
-        <span className="text-sm text-muted-foreground">{transactions.length} transactions</span>
+    <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+          <Clock className="h-5 w-5 text-primary" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Transaction History</h2>
+            <span className="text-sm text-muted-foreground">{transactions.length} transactions</span>
+          </div>
+          <p className="text-sm text-muted-foreground">Recent wallet activity</p>
+        </div>
       </div>
 
       <div className="space-y-2">
