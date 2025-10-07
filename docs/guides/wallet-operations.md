@@ -362,7 +362,7 @@ Action: Dashboard refreshes
 
 ### Import Xpub
 ✅ **Do**:
-- Use gap limit of 200 for normal wallets
+- Use gap limit of 400 for normal wallets
 - Increase to 500-1000 if funds missing
 - Wait for full rescan before using
 - Keep xpub secure (privacy concern)
@@ -421,7 +421,7 @@ Action: Dashboard refreshes
 
 3. **Gap limit out of range**:
    - Use value between 20-1000
-   - Default 200 is recommended
+   - Default 400 is recommended
 
 ---
 
@@ -719,7 +719,7 @@ See [API Reference](../api/wallet-endpoints.md) for details.
 - [ ] Wallet RPC connected
 - [ ] Blockchain fully synced
 - [ ] Xpub key copied correctly
-- [ ] Gap limit decided (200 recommended)
+- [ ] Gap limit decided (400 recommended)
 - [ ] Time allocated (10-30 minutes)
 
 ### During Import

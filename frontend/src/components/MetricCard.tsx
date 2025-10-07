@@ -38,7 +38,7 @@ export const MetricCard = ({ title, value, subtitle, icon: Icon, trend, usdValue
             </div>
           )}
         </div>
-        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 group-hover:shadow-glow-primary transition-all duration-300">
+        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 transition-all duration-300">
           <Icon className="h-5 w-5 text-primary" />
         </div>
       </div>

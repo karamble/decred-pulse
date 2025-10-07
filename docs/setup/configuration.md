@@ -136,7 +136,7 @@ DCRD_VERSION=abc123def456
 #### `DCRWALLET_GAP_LIMIT`
 **Description**: HD wallet gap limit for address discovery
 
-**Default**: `200`
+**Default**: `400`
 
 **Range**: `20` - `10000`
 
@@ -150,7 +150,7 @@ DCRD_VERSION=abc123def456
 **Recommendations**:
 ```
 New wallet:     20-50    (few addresses used)
-Normal use:     200      (recommended default)
+Normal use:     400      (recommended default)
 Active wallet:  500-1000 (many transactions)
 Legacy wallet:  1000+    (old or heavily used)
 ```
@@ -163,7 +163,7 @@ Legacy wallet:  1000+    (old or heavily used)
 **Example scenarios**:
 ```bash
 # Standard usage
-DCRWALLET_GAP_LIMIT=200
+DCRWALLET_GAP_LIMIT=400
 
 # Missing funds (increase gradually)
 DCRWALLET_GAP_LIMIT=500
@@ -236,7 +236,7 @@ DCRWALLET_RPC_USER=dcrwallet
 DCRWALLET_RPC_PASS=MyWalletPass456
 
 # Gap limit
-DCRWALLET_GAP_LIMIT=200
+DCRWALLET_GAP_LIMIT=400
 ```
 
 **Production configuration**:
@@ -253,7 +253,7 @@ DCRD_VERSION=release-v2.0.6
 DCRWALLET_VERSION=release-v2.0.6
 
 # Standard gap limit
-DCRWALLET_GAP_LIMIT=200
+DCRWALLET_GAP_LIMIT=400
 
 # Transaction indexing
 DCRD_EXTRA_ARGS=--txindex
@@ -469,7 +469,7 @@ dcrwallet configuration is set via environment variables and command-line argume
 
 Set via `.env`:
 ```bash
-DCRWALLET_GAP_LIMIT=200
+DCRWALLET_GAP_LIMIT=400
 ```
 
 Passed to dcrwallet as `--gaplimit=200`
@@ -682,7 +682,7 @@ DCRWALLET_RPC_USER=prod_wallet_$(openssl rand -hex 8)
 DCRWALLET_RPC_PASS=$(openssl rand -base64 32)
 DCRD_VERSION=release-v2.0.6
 DCRWALLET_VERSION=release-v2.0.6
-DCRWALLET_GAP_LIMIT=200
+DCRWALLET_GAP_LIMIT=400
 DCRD_EXTRA_ARGS=--txindex
 ```
 

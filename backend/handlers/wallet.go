@@ -118,43 +118,33 @@ func ImportXpubHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start the import in a goroutine
 	go func() {
-		// Build params: importxpub "account" "xpub"
-		// Note: importxpub does NOT have a rescan parameter - it always rescans automatically
+		// Build params: importxpub "account" "xpub" rescanfrom
+		// Start from block 0 for full rescan (or higher if user specifies)
+		rescanFrom := 0
+		if req.Rescan {
+			rescanFrom = 0 // Full rescan from genesis if explicitly requested
+		}
+
 		params := []json.RawMessage{
 			json.RawMessage(fmt.Sprintf(`"%s"`, accountName)),
 			json.RawMessage(fmt.Sprintf(`"%s"`, req.Xpub)),
+			json.RawMessage(fmt.Sprintf(`%d`, rescanFrom)), // CRITICAL: rescanfrom parameter
 		}
+
+		log.Printf("Importing xpub for account '%s' with rescan from block %d", accountName, rescanFrom)
 		result, err := rpc.WalletClient.RawRequest(context.Background(), "importxpub", params)
 		if err != nil {
 			log.Printf("Failed to import xpub: %v", err)
 			return
 		}
 		log.Printf("Xpub import completed: %v", string(result))
-
-		// If user requested additional rescan, trigger it after import
-		// This is useful if the xpub was previously imported and removed
-		if req.Rescan {
-			log.Printf("Triggering additional rescan as requested")
-			rescanParams := []json.RawMessage{
-				json.RawMessage(`0`), // Start from block 0
-			}
-			_, err := rpc.WalletClient.RawRequest(context.Background(), "rescanwallet", rescanParams)
-			if err != nil {
-				log.Printf("Failed to trigger additional rescan: %v", err)
-			} else {
-				log.Printf("Additional rescan initiated")
-			}
-		}
+		log.Printf("Rescan initiated automatically by importxpub")
 	}()
 
 	// Return immediately - the frontend will poll wallet status to track rescan progress
-	rescanMsg := "Blockchain rescan will start automatically."
-	if req.Rescan {
-		rescanMsg = "Full blockchain rescan will be performed."
-	}
 	response := types.ImportXpubResponse{
 		Success: true,
-		Message: fmt.Sprintf("Xpub import started for account '%s'. %s This may take several minutes.", accountName, rescanMsg),
+		Message: fmt.Sprintf("Xpub import started for account '%s'. Full blockchain rescan will discover your transactions. This typically takes 5-10 minutes.", accountName),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

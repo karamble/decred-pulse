@@ -276,7 +276,7 @@ const data = await getWalletTransactions(100);  // Total to fetch
 
 ### For Best Performance
 1. ✅ Wait for full blockchain sync before rescanning
-2. ✅ Use appropriate gap limit (200 recommended)
+2. ✅ Use appropriate gap limit (400 recommended)
 3. ✅ Don't navigate away during wallet rescan
 4. ✅ Monitor sync progress through dashboard
 

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { useEffect, useState } from 'react';
-import { Compass, Box, ArrowRightLeft } from 'lucide-react';
+import { Box, ArrowRightLeft } from 'lucide-react';
 import { SearchBar } from '../components/explorer/SearchBar';
 import { getRecentBlocks, BlockSummary } from '../services/explorerApi';
 import { useNavigate } from 'react-router-dom';
@@ -54,17 +54,6 @@ export const ExplorerLanding = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-background/90 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
-            <Compass className="h-8 w-8 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold">Block Explorer</h1>
-            <p className="text-muted-foreground">Search and explore the Decred blockchain</p>
-          </div>
-        </div>
-
         {/* Search Bar */}
         <div className="flex justify-center">
           <SearchBar />

@@ -48,9 +48,9 @@ services:
       - DCRD_RPC_USER=${DCRD_RPC_USER:-decred}
       - DCRD_RPC_PASS=${DCRD_RPC_PASS:-decredpass}
       - DCRD_RPC_HOST=dcrd
-      - DCRWALLET_GAP_LIMIT=${DCRWALLET_GAP_LIMIT:-1000}  # Address gap limit for discovery
+      - DCRWALLET_GAP_LIMIT=${DCRWALLET_GAP_LIMIT:-400}  # Address gap limit for discovery
     command: >
-      --gaplimit=${DCRWALLET_GAP_LIMIT:-1000}
+      --gaplimit=${DCRWALLET_GAP_LIMIT:-400}
     depends_on:
       dcrd:
         condition: service_healthy

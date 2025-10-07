@@ -57,6 +57,7 @@ type Transaction struct {
 	Account       string    `json:"account,omitempty"`
 	Vout          uint32    `json:"vout"`
 	Generated     bool      `json:"generated,omitempty"`
+	IsMixed       bool      `json:"isMixed,omitempty"` // true if from CoinJoin/StakeShuffle
 }
 
 type TransactionListResponse struct {
