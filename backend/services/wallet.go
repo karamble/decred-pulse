@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -630,41 +631,171 @@ func ListTransactions(ctx context.Context, count, from int) (*types.TransactionL
 		return nil, fmt.Errorf("failed to unmarshal transactions: %w", err)
 	}
 
-	// Convert to our transaction type
+	// Group transactions by txid and category to combine multiple outputs
+	// Only group "receive" transactions - this is especially important for CoinJoin which may have many receive outputs
+	// "send" transactions should NOT be grouped to show the actual send amount
+	txGroups := make(map[string]*types.Transaction)
 	transactions := make([]types.Transaction, 0, len(rpcTransactions))
-	seenTxIDs := make(map[string]bool) // Track unique transactions to avoid duplicates
+
+	txGroupKey := func(txid, category string) string {
+		return fmt.Sprintf("%s-%s", txid, category)
+	}
 
 	for _, rpcTx := range rpcTransactions {
-		// Create a unique key for this transaction (txid + vout)
-		uniqueKey := fmt.Sprintf("%s-%d", rpcTx.TxID, rpcTx.Vout)
-
-		// Skip if we've already processed this exact output
-		if seenTxIDs[uniqueKey] {
-			continue
-		}
-		seenTxIDs[uniqueKey] = true
-
-		tx := types.Transaction{
-			TxID:          rpcTx.TxID,
-			Amount:        rpcTx.Amount,
-			Fee:           rpcTx.Fee,
-			Confirmations: rpcTx.Confirmations,
-			BlockHash:     rpcTx.BlockHash,
-			BlockTime:     rpcTx.BlockTime,
-			Time:          time.Unix(rpcTx.Time, 0),
-			Category:      rpcTx.Category,
-			TxType:        rpcTx.TxType,
-			Address:       rpcTx.Address,
-			Account:       rpcTx.Account,
-			Vout:          rpcTx.Vout,
-			Generated:     rpcTx.Generated,
+		// Check if this transaction is from a CoinJoin/StakeShuffle
+		// Check both send and receive transactions since CoinJoin involves both
+		isMixed := false
+		if rpcTx.TxType == "regular" && (rpcTx.Category == "receive" || rpcTx.Category == "send") {
+			isMixed = isCoinJoinTransaction(ctx, rpcTx.TxID)
 		}
 
-		transactions = append(transactions, tx)
+		// Only group "receive" transactions, not "send"
+		if rpcTx.Category == "receive" {
+			groupKey := txGroupKey(rpcTx.TxID, rpcTx.Category)
+
+			if existing, exists := txGroups[groupKey]; exists {
+				// This txid already exists, add the amount
+				existing.Amount += rpcTx.Amount
+				// Keep the most relevant address (prefer non-empty)
+				if existing.Address == "" && rpcTx.Address != "" {
+					existing.Address = rpcTx.Address
+				}
+			} else {
+				// First time seeing this receive transaction
+				tx := &types.Transaction{
+					TxID:          rpcTx.TxID,
+					Amount:        rpcTx.Amount,
+					Fee:           rpcTx.Fee,
+					Confirmations: rpcTx.Confirmations,
+					BlockHash:     rpcTx.BlockHash,
+					BlockTime:     rpcTx.BlockTime,
+					Time:          time.Unix(rpcTx.Time, 0),
+					Category:      rpcTx.Category,
+					TxType:        rpcTx.TxType,
+					Address:       rpcTx.Address,
+					Account:       rpcTx.Account,
+					Vout:          rpcTx.Vout,
+					Generated:     rpcTx.Generated,
+					IsMixed:       isMixed,
+				}
+				txGroups[groupKey] = tx
+			}
+		} else {
+			// Don't group send/other transactions - add them directly
+			tx := types.Transaction{
+				TxID:          rpcTx.TxID,
+				Amount:        rpcTx.Amount,
+				Fee:           rpcTx.Fee,
+				Confirmations: rpcTx.Confirmations,
+				BlockHash:     rpcTx.BlockHash,
+				BlockTime:     rpcTx.BlockTime,
+				Time:          time.Unix(rpcTx.Time, 0),
+				Category:      rpcTx.Category,
+				TxType:        rpcTx.TxType,
+				Address:       rpcTx.Address,
+				Account:       rpcTx.Account,
+				Vout:          rpcTx.Vout,
+				Generated:     rpcTx.Generated,
+				IsMixed:       isMixed,
+			}
+			transactions = append(transactions, tx)
+		}
 	}
+
+	// Add grouped receive transactions to the main list
+	for _, tx := range txGroups {
+		transactions = append(transactions, *tx)
+	}
+
+	// Sort transactions by time, newest first
+	// Use blockTime for confirmed transactions, fallback to time for pending
+	sort.Slice(transactions, func(i, j int) bool {
+		timeI := transactions[i].BlockTime
+		if timeI == 0 {
+			timeI = transactions[i].Time.Unix()
+		}
+		timeJ := transactions[j].BlockTime
+		if timeJ == 0 {
+			timeJ = transactions[j].Time.Unix()
+		}
+		return timeI > timeJ // Descending order (newest first)
+	})
 
 	return &types.TransactionListResponse{
 		Transactions: transactions,
 		Total:        len(transactions),
 	}, nil
+}
+
+// isCoinJoinTransaction checks if a transaction is a CoinJoin/StakeShuffle by analyzing its structure
+// CoinJoin transactions typically have:
+// 1. Multiple inputs (usually 5+)
+// 2. Multiple outputs with equal or very similar amounts
+func isCoinJoinTransaction(ctx context.Context, txHash string) bool {
+	if rpc.DcrdClient == nil {
+		log.Printf("CoinJoin check skipped for %s: no dcrd connection", txHash)
+		return false // Can't check without node connection
+	}
+
+	// Get raw transaction
+	rawTxResult, err := rpc.DcrdClient.RawRequest(ctx, "getrawtransaction", []json.RawMessage{
+		json.RawMessage(fmt.Sprintf(`"%s"`, txHash)),
+		json.RawMessage("1"), // verbose=1 to get decoded transaction (must be int, not bool)
+	})
+	if err != nil {
+		log.Printf("CoinJoin check failed for %s: getrawtransaction error: %v", txHash, err)
+		return false
+	}
+
+	// Parse the verbose transaction response
+	var tx struct {
+		Vin []struct {
+			Txid string `json:"txid,omitempty"`
+		} `json:"vin"`
+		Vout []struct {
+			Value float64 `json:"value"`
+		} `json:"vout"`
+	}
+
+	if err := json.Unmarshal(rawTxResult, &tx); err != nil {
+		log.Printf("CoinJoin check failed for %s: unmarshal error: %v", txHash, err)
+		return false
+	}
+
+	log.Printf("Analyzing tx %s: %d inputs, %d outputs", txHash, len(tx.Vin), len(tx.Vout))
+
+	// CoinJoin heuristics:
+	// 1. Must have multiple inputs (typically 5+ participants)
+	if len(tx.Vin) < 3 {
+		log.Printf("TX %s: not enough inputs (%d < 3)", txHash, len(tx.Vin))
+		return false
+	}
+
+	// 2. Must have multiple outputs
+	if len(tx.Vout) < 3 {
+		log.Printf("TX %s: not enough outputs (%d < 3)", txHash, len(tx.Vout))
+		return false
+	}
+
+	// 3. Check if outputs have similar amounts (CoinJoin signature)
+	// Count outputs with the same value
+	outputValues := make(map[float64]int)
+	for _, vout := range tx.Vout {
+		// Round to 8 decimal places to account for floating point precision
+		rounded := float64(int64(vout.Value*100000000)) / 100000000
+		outputValues[rounded]++
+	}
+
+	log.Printf("TX %s: output value distribution: %v", txHash, outputValues)
+
+	// If we have 3+ outputs with the same value, it's likely a CoinJoin
+	for value, count := range outputValues {
+		if count >= 3 {
+			log.Printf("TX %s: IDENTIFIED AS COINJOIN - %d outputs with value %.8f", txHash, count, value)
+			return true
+		}
+	}
+
+	log.Printf("TX %s: not a CoinJoin (no 3+ matching output values)", txHash)
+	return false
 }

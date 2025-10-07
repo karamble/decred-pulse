@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getWalletTransactions, WalletTransaction } from '../services/api';
-import { ArrowDownCircle, ArrowUpCircle, Ticket, Check, X, Coins, Clock, ChevronDown } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Ticket, Check, X, Coins, Clock, ChevronDown, Shuffle } from 'lucide-react';
 
 export const TransactionHistory = () => {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -32,22 +32,26 @@ export const TransactionHistory = () => {
     }
   };
 
-  const getCategoryIcon = (category: string, txType: string) => {
+  const getCategoryIcon = (category: string, txType: string, isMixed: boolean) => {
     if (txType === 'ticket') return <Ticket className="h-5 w-5 text-warning" />;
     if (txType === 'vote') return <Check className="h-5 w-5 text-success" />;
     if (txType === 'revocation') return <X className="h-5 w-5 text-destructive" />;
+    if (category === 'send' && isMixed) return <Shuffle className="h-5 w-5 text-purple-500" />;
     if (category === 'send') return <ArrowUpCircle className="h-5 w-5 text-red-500" />;
+    if (category === 'receive' && isMixed) return <Shuffle className="h-5 w-5 text-purple-500" />;
     if (category === 'receive') return <ArrowDownCircle className="h-5 w-5 text-success" />;
     if (category === 'generate') return <Coins className="h-5 w-5 text-primary" />;
     if (category === 'immature') return <Clock className="h-5 w-5 text-muted-foreground" />;
     return <Coins className="h-5 w-5 text-muted-foreground" />;
   };
 
-  const getCategoryLabel = (category: string, txType: string) => {
+  const getCategoryLabel = (category: string, txType: string, isMixed: boolean) => {
     if (txType === 'ticket') return 'Ticket Purchase';
     if (txType === 'vote') return 'Vote';
     if (txType === 'revocation') return 'Revocation';
+    if (category === 'send' && isMixed) return 'Sent (CoinJoin)';
     if (category === 'send') return 'Sent';
+    if (category === 'receive' && isMixed) return 'Received (CoinJoin)';
     if (category === 'receive') return 'Received';
     if (category === 'generate') return 'Mined';
     if (category === 'immature') return 'Immature';
@@ -71,8 +75,11 @@ export const TransactionHistory = () => {
     return `${sign}${abs.toFixed(8)} DCR`;
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatDate = (tx: WalletTransaction) => {
+    // Use blockTime for confirmed transactions (when it was included in a block)
+    // Fall back to time for pending transactions
+    const timestamp = tx.blockTime ? tx.blockTime * 1000 : new Date(tx.time).getTime();
+    const date = new Date(timestamp);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -147,12 +154,12 @@ export const TransactionHistory = () => {
           >
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <div className="flex-shrink-0">
-                {getCategoryIcon(tx.category, tx.txType)}
+                {getCategoryIcon(tx.category, tx.txType, tx.isMixed || false)}
               </div>
               
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium">{getCategoryLabel(tx.category, tx.txType)}</span>
+                  <span className="font-medium">{getCategoryLabel(tx.category, tx.txType, tx.isMixed || false)}</span>
                   {tx.confirmations === 0 && (
                     <span className="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning">
                       Pending
@@ -167,7 +174,7 @@ export const TransactionHistory = () => {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <code className="font-mono text-xs">{truncateTxid(tx.txid)}</code>
                   <span>•</span>
-                  <span>{formatDate(tx.time)}</span>
+                  <span>{formatDate(tx)}</span>
                   {tx.address && (
                     <>
                       <span>•</span>

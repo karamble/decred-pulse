@@ -222,7 +222,7 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
             <button
               type="submit"
               disabled={loading || success}
-              className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold hover:shadow-glow-primary transition-all disabled:opacity-50 flex items-center gap-2"
+              className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold transition-all disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
                 <>

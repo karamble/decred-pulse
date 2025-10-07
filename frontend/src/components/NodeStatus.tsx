@@ -56,7 +56,7 @@ export const NodeStatus = ({ status, syncProgress = 0, version, syncMessage }: N
             <p className="text-sm text-muted-foreground">Decred {version || ''}</p>
           </div>
         </div>
-        <div className={`px-6 py-3 rounded-xl ${status === 'running' ? 'bg-success text-white shadow-glow-success' : `${config.bgColor} border-2 ${config.borderColor}`}`}>
+        <div className={`px-6 py-3 rounded-xl ${status === 'running' ? 'bg-success text-white' : `${config.bgColor} border-2 ${config.borderColor}`}`}>
           <span className={`${status === 'running' ? 'text-white' : config.color} font-bold text-lg tracking-wide`}>
             {config.label}
           </span>

@@ -178,6 +178,7 @@ export interface WalletTransaction {
   account?: string;
   vout: number;
   generated?: boolean;
+  isMixed?: boolean; // true if from CoinJoin/StakeShuffle
 }
 
 export interface TransactionListResponse {

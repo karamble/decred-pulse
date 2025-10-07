@@ -216,7 +216,7 @@ export const WalletDashboard = () => {
         </button>
         <button
           onClick={() => setShowImportModal(true)}
-          className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold hover:shadow-glow-primary transition-all flex items-center gap-2"
+          className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold transition-all flex items-center gap-2"
         >
           <Plus className="h-5 w-5" />
           Add X-Pub

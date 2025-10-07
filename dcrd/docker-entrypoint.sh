@@ -50,5 +50,12 @@ fi
 
 # Execute dcrd with all provided arguments
 # The --rpccert and --rpckey parameters should be passed via docker-compose command
-exec dcrd "$@"
+# DCRD_EXTRA_ARGS can be set via environment variable for additional flags
+if [ -n "$DCRD_EXTRA_ARGS" ]; then
+    echo "Starting dcrd with extra args: $DCRD_EXTRA_ARGS"
+    # shellcheck disable=SC2086
+    exec dcrd "$@" $DCRD_EXTRA_ARGS
+else
+    exec dcrd "$@"
+fi
 

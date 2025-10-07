@@ -89,7 +89,7 @@ export const WalletStatus = ({
             </p>
           </div>
         </div>
-        <div className={`px-6 py-3 rounded-xl ${status === 'synced' ? 'bg-success text-white shadow-glow-success' : `${config.bgColor} border-2 ${config.borderColor}`}`}>
+        <div className={`px-6 py-3 rounded-xl ${status === 'synced' ? 'bg-success text-white' : `${config.bgColor} border-2 ${config.borderColor}`}`}>
           <span className={`${status === 'synced' ? 'text-white' : config.color} font-bold text-lg tracking-wide`}>
             {config.label}
           </span>
