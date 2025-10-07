@@ -22,12 +22,19 @@ export interface NodeStatus {
   syncMessage: string;
 }
 
+export interface RecentBlock {
+  height: number;
+  hash: string;
+  timestamp: number; // Unix timestamp
+}
+
 export interface BlockchainInfo {
   blockHeight: number;
   blockHash: string;
   difficulty: number;
   chainSize: number;
   blockTime: string;
+  recentBlocks: RecentBlock[];
 }
 
 export interface NetworkInfo {
@@ -58,6 +65,7 @@ export interface SupplyInfo {
 
 export interface StakingInfo {
   ticketPrice: number;
+  nextTicketPrice: number;
   poolSize: number;
   lockedDCR: number;
   participationRate: number;
@@ -79,6 +87,7 @@ export interface MempoolInfo {
   votes: number;
   revocations: number;
   regularTxs: number;
+  coinJoinTxs: number;
 }
 
 export interface DashboardData {

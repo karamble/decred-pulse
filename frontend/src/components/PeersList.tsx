@@ -12,11 +12,19 @@ interface PeersListProps {
 export const PeersList = ({ peers = [] }: PeersListProps) => {
   return (
     <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Connected Peers</h3>
-        <span className="px-3 py-1 rounded-md text-sm font-medium bg-primary/10 text-primary border border-primary/20">
-          {peers.length} Active
-        </span>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
+          <Wifi className="h-6 w-6 text-primary" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Connected Peers</h3>
+            <span className="px-3 py-1 rounded-md text-sm font-medium bg-primary/10 text-primary border border-primary/20">
+              {peers.length} Active
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">Active network connections</p>
+        </div>
       </div>
       
       <div className="max-h-[400px] overflow-y-auto">

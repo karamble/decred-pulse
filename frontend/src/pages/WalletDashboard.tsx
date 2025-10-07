@@ -297,7 +297,6 @@ export const WalletDashboard = () => {
           <TicketPoolInfo
             poolSize={data.stakingInfo.poolSize}
             currentDifficulty={data.stakingInfo.currentDifficulty}
-            nextDifficulty={data.stakingInfo.nextDifficulty}
             estimatedMin={data.stakingInfo.estimatedMin}
             estimatedMax={data.stakingInfo.estimatedMax}
             estimatedExpected={data.stakingInfo.estimatedExpected}

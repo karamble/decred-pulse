@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { 
   Users, Layers, TrendingUp, Coins, Wallet, 
-  Lock, DollarSign, Shield 
+  Lock
 } from 'lucide-react';
 import { NodeStatus } from '../components/NodeStatus';
 import { MetricCard } from '../components/MetricCard';
@@ -13,6 +13,7 @@ import { BlockchainInfo } from '../components/BlockchainInfo';
 import { PeersList } from '../components/PeersList';
 import { StakingStats } from '../components/StakingStats';
 import { MempoolActivity } from '../components/MempoolActivity';
+import { TicketPoolCard } from '../components/TicketPoolCard';
 import { getDashboardData, DashboardData } from '../services/api';
 
 export const NodeDashboard = () => {
@@ -124,19 +125,12 @@ export const NodeDashboard = () => {
             isPositive: true 
           } : undefined}
         />
-        <MetricCard
-          title="Supply Mixed"
-          value={data ? (data.supplyInfo?.mixedPercent || 'N/A') : 'Loading...'}
-          subtitle="Privacy enhanced"
-          icon={Shield}
-          trend={{ value: "CoinShuffle++", isPositive: true }}
-        />
-        <MetricCard
-          title="Exchange Rate"
-          value={data ? (data.supplyInfo?.exchangeRate || 'N/A') : 'Loading...'}
-          subtitle="USD per DCR"
-          icon={DollarSign}
-        />
+        <div className="md:col-span-2">
+          <TicketPoolCard 
+            data={data?.stakingInfo} 
+            currentBlockHeight={data?.blockchainInfo?.blockHeight}
+          />
+        </div>
       </div>
 
       {/* Details Grid */}
@@ -145,13 +139,11 @@ export const NodeDashboard = () => {
         <StakingStats data={data?.stakingInfo} />
       </div>
 
-      {/* Additional Grid */}
+      {/* Mempool Activity & Peers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <MempoolActivity data={data?.mempoolInfo} />
+        <PeersList peers={data?.peers} />
       </div>
-
-      {/* Peers List */}
-      <PeersList peers={data?.peers} />
 
       {/* Last Update */}
       {data && (

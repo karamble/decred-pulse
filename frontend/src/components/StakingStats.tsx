@@ -57,7 +57,15 @@ export const StakingStats = ({ data }: StakingStatsProps) => {
 
   return (
     <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50 animate-fade-in">
-      <h3 className="text-lg font-semibold mb-4">Staking Statistics</h3>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
+          <Activity className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold">Staking Statistics</h3>
+          <p className="text-sm text-muted-foreground">Network staking metrics</p>
+        </div>
+      </div>
       <div className="space-y-4">
         {stakingItems.map((item, index) => {
           const Icon = item.icon;
@@ -73,30 +81,6 @@ export const StakingStats = ({ data }: StakingStatsProps) => {
             </div>
           );
         })}
-
-        {data && (
-          <>
-            <div className="mt-4 h-px bg-border/50" />
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-              <div className="p-2 rounded-lg bg-muted/30">
-                <div className="text-muted-foreground">Live</div>
-                <div className="font-semibold">{data.live === 0 ? 'N/A' : formatNumber(data.live)}</div>
-              </div>
-              <div className="p-2 rounded-lg bg-muted/30">
-                <div className="text-muted-foreground">Immature</div>
-                <div className="font-semibold">{data.immature === 0 ? 'N/A' : formatNumber(data.immature)}</div>
-              </div>
-              <div className="p-2 rounded-lg bg-muted/30">
-                <div className="text-muted-foreground">Voted</div>
-                <div className="font-semibold text-success">{data.voted === 0 ? 'N/A' : formatNumber(data.voted)}</div>
-              </div>
-              <div className="p-2 rounded-lg bg-muted/30">
-                <div className="text-muted-foreground">Missed</div>
-                <div className="font-semibold text-warning">{data.missed === 0 ? 'N/A' : formatNumber(data.missed)}</div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
