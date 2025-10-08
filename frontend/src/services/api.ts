@@ -279,6 +279,52 @@ export const getSyncProgress = async (): Promise<SyncProgressData> => {
   return response.data;
 };
 
+// WebSocket streaming for rescan progress
+export const streamRescanProgress = (
+  onProgress: (data: SyncProgressData) => void,
+  onError?: (error: Error) => void,
+  onClose?: () => void
+): (() => void) => {
+  // Get WebSocket URL from API base URL
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+  // Use gRPC streaming endpoint (real-time progress updates)
+  const wsUrl = baseUrl.replace(/^http/, 'ws') + '/wallet/grpc/stream-rescan';
+  
+  console.log('Connecting to gRPC WebSocket:', wsUrl);
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log('WebSocket connection established');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as SyncProgressData;
+      onProgress(data);
+    } catch (err) {
+      console.error('Failed to parse WebSocket message:', err);
+      onError?.(new Error('Failed to parse progress data'));
+    }
+  };
+
+  ws.onerror = (event) => {
+    console.error('WebSocket error:', event);
+    onError?.(new Error('WebSocket connection error'));
+  };
+
+  ws.onclose = () => {
+    console.log('WebSocket connection closed');
+    onClose?.();
+  };
+
+  // Return cleanup function
+  return () => {
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+  };
+};
+
 export const getWalletTransactions = async (count: number = 50, from: number = 0): Promise<TransactionListResponse> => {
   const response = await api.get<TransactionListResponse>(`/wallet/transactions?count=${count}&from=${from}`);
   return response.data;

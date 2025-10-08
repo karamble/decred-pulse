@@ -56,6 +56,22 @@ func main() {
 		log.Println("No dcrwallet RPC credentials provided. Wallet features disabled.")
 	}
 
+	// Initialize wallet gRPC client for streaming
+	grpcConfig := rpc.GrpcConfig{
+		GrpcHost: getEnv("DCRWALLET_RPC_HOST", "localhost"),
+		GrpcPort: getEnv("DCRWALLET_GRPC_PORT", "9111"),
+		GrpcCert: getEnv("DCRWALLET_RPC_CERT", ""),
+	}
+
+	if grpcConfig.GrpcCert != "" {
+		if err := rpc.InitWalletGrpcClient(grpcConfig); err != nil {
+			log.Printf("Warning: Could not connect to dcrwallet gRPC on startup: %v", err)
+			log.Println("Streaming features will be unavailable")
+		}
+	} else {
+		log.Println("No gRPC certificate provided. Streaming features disabled.")
+	}
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -77,6 +93,10 @@ func main() {
 	api.HandleFunc("/wallet/importxpub", handlers.ImportXpubHandler).Methods("POST")
 	api.HandleFunc("/wallet/rescan", handlers.RescanWalletHandler).Methods("POST")
 	api.HandleFunc("/wallet/sync-progress", handlers.GetSyncProgressHandler).Methods("GET")
+
+	// WebSocket streaming routes (log-based monitoring, does not start rescans)
+	api.HandleFunc("/wallet/stream-rescan-progress", handlers.StreamRescanProgressHandler).Methods("GET")
+	api.HandleFunc("/wallet/grpc/stream-rescan", handlers.StreamRescanGrpcHandler).Methods("GET")
 
 	// Explorer routes
 	api.HandleFunc("/explorer/search", handlers.SearchHandler).Methods("GET")
@@ -101,6 +121,7 @@ func main() {
 	log.Printf("Starting Decred Dashboard API server on %s", address)
 	log.Println("Node endpoints: /api/dashboard, /api/node/*, /api/blockchain/*, /api/network/*")
 	log.Println("Wallet endpoints: /api/wallet/status, /api/wallet/dashboard, /api/wallet/importxpub")
+	log.Println("Wallet gRPC endpoints: /api/wallet/grpc/stream-rescan (real-time streaming)")
 	log.Println("Explorer endpoints: /api/explorer/search, /api/explorer/blocks/*, /api/explorer/transactions/*")
 	log.Fatal(http.ListenAndServe(address, corsHandler.Handler(r)))
 }

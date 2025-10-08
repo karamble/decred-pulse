@@ -6,17 +6,13 @@ import { Activity, AlertCircle, Loader2, Lock, Wallet } from 'lucide-react';
 
 interface WalletStatusProps {
   status: 'synced' | 'syncing' | 'no_wallet' | 'disconnected' | 'locked';
-  syncProgress?: number;
   version?: string;
-  syncMessage?: string;
   unlocked?: boolean;
 }
 
 export const WalletStatus = ({ 
   status, 
-  syncProgress = 0, 
   version, 
-  syncMessage,
   unlocked = false 
 }: WalletStatusProps) => {
   const getStatusConfig = () => {
@@ -96,22 +92,7 @@ export const WalletStatus = ({
         </div>
       </div>
       
-      {status === 'syncing' && (
-        <div className="mt-6 space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground font-medium">{syncMessage || 'Blockchain Rescan Progress'}</span>
-            <span className="font-bold text-lg">{syncProgress.toFixed(1)}%</span>
-          </div>
-          <div className="relative h-3 bg-muted rounded-full overflow-hidden border border-border/50">
-            <div 
-              className="h-full bg-gradient-primary transition-all duration-500 ease-out relative overflow-hidden"
-              style={{ width: `${syncProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse" />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Progress bar removed - now using unified SyncProgressBar component */}
 
       {status === 'no_wallet' && (
         <div className="mt-4 p-4 rounded-lg bg-muted/10 border border-border/50">

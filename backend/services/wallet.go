@@ -57,7 +57,7 @@ func ParseWalletLogsForRescan() (bool, int64, error) {
 	}
 
 	now := time.Now()
-	maxAge := 2 * time.Minute // Consider rescan messages older than 2 minutes as stale
+	maxAge := 5 * time.Second // Consider rescan messages older than 5 seconds as stale (logs update every second during active rescan)
 
 	for i := len(lines) - 1; i >= startIndex; i-- {
 		line := lines[i]
@@ -215,12 +215,18 @@ func FetchWalletStatus() (*types.WalletStatus, error) {
 		}
 	}
 
+	// Parse version number from single integer
+	// dcrwallet version format: version = major * 1000000 + minor * 10000 + patch * 100 + build
+	major := walletInfo.Version / 1000000
+	minor := (walletInfo.Version / 10000) % 100
+	patch := (walletInfo.Version / 100) % 100
+
 	return &types.WalletStatus{
 		Status:           status,
 		SyncProgress:     syncProgress,
 		SyncHeight:       syncHeight,
 		BestBlockHash:    bestBlockHash,
-		Version:          fmt.Sprintf("%d.%d.%d", walletInfo.Version, 0, 0),
+		Version:          fmt.Sprintf("v%d.%d.%d", major, minor, patch),
 		Unlocked:         true, // Assume unlocked since we auto-unlock
 		RescanInProgress: rescanInProgress,
 		SyncMessage:      syncMessage,

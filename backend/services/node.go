@@ -165,7 +165,7 @@ func FetchNodeStatus() (*types.NodeStatus, error) {
 	return &types.NodeStatus{
 		Status:       status,
 		SyncProgress: syncProgress,
-		Version:      fmt.Sprintf("%d.%d.%d", versionInfo["dcrd"].Major, versionInfo["dcrd"].Minor, versionInfo["dcrd"].Patch),
+		Version:      fmt.Sprintf("v%d.%d.%d", versionInfo["dcrd"].Major, versionInfo["dcrd"].Minor, versionInfo["dcrd"].Patch),
 		SyncPhase:    syncPhase,
 		SyncMessage:  syncMessage,
 	}, nil
