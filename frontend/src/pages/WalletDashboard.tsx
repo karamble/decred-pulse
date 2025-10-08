@@ -12,87 +12,33 @@ import { SyncProgressBar } from '../components/SyncProgressBar';
 import { TicketPoolInfo } from '../components/TicketPoolInfo';
 import { MyTicketsInfo } from '../components/MyTicketsInfo';
 import { TransactionHistory } from '../components/TransactionHistory';
-import { getWalletDashboard, WalletDashboardData, triggerRescan, getSyncProgress, SyncProgressData } from '../services/api';
+import { getWalletDashboard, WalletDashboardData, triggerRescan, getSyncProgress, streamRescanProgress, SyncProgressData } from '../services/api';
 
 export const WalletDashboard = () => {
   const [data, setData] = useState<WalletDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [rescanning, setRescanning] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgressData | null>(null);
   const [showSyncProgress, setShowSyncProgress] = useState(false);
 
-  const fetchSyncProgress = async () => {
-    try {
-      const progress = await getSyncProgress();
-      setSyncProgress(progress);
-      
-      // Check if rescan is active (backend returns false when logs are stale/complete)
-      if (!progress.isRescanning) {
-        // Rescan is complete or stale - stop polling
-        if (showSyncProgress || rescanning) {
-          console.log('Rescan no longer active (stale or complete) - stopping sync progress polling');
-          const wasRescanning = showSyncProgress;
-          setShowSyncProgress(false);
-          setRescanning(false);
-          
-          // Resume normal wallet data polling
-          if (wasRescanning) {
-            console.log('Resuming normal wallet data polling');
-            setError(null);
-            setLoading(false);
-            fetchData(true);
-          }
-        }
-        return; // Stop processing - rescan is not active
-      }
-      
-      // Rescan is active
-      if (progress.progress < 99) {
-        // Still rescanning - show progress bar
-        setShowSyncProgress(true);
-        setRescanning(true);
-      } else {
-        // Progress reached 99% - rescan complete
-        if (showSyncProgress || rescanning) {
-          console.log('Rescan completed (99%) - stopping sync progress polling');
-          const wasRescanning = showSyncProgress;
-          setShowSyncProgress(false);
-          setRescanning(false);
-          
-          // Resume normal wallet data polling
-          if (wasRescanning) {
-            console.log('Resuming normal wallet data polling');
-            setError(null);
-            setLoading(false);
-            fetchData(true);
-          }
-        }
-      }
-    } catch (err: any) {
-      console.error('Error fetching sync progress:', err);
-      // Don't show error for sync progress polling - it's optional
-    }
-  };
-
-  const fetchData = async (force = false) => {
-    // Skip wallet data fetching during rescan - only poll sync progress
-    // Unless force=true (when explicitly called after rescan completes)
-    if (showSyncProgress && !force) {
-      console.log('Skipping wallet data fetch - rescan in progress');
-      return;
-    }
-
+  const fetchData = async () => {
     try {
       const walletData = await getWalletDashboard();
       setData(walletData);
       setError(null);
       
-      // Clear rescanning state if rescan is no longer active
-      if (rescanning && !walletData.walletStatus.rescanInProgress) {
-        setRescanning(false);
-        setShowSyncProgress(false);
+      // Check if wallet is syncing and show unified progress bar
+      if (walletData.walletStatus.status === 'syncing' && !showSyncProgress) {
+        console.log('Wallet syncing detected - activating progress bar stream');
+        setSyncProgress({
+          progress: walletData.walletStatus.syncProgress || 0,
+          scanHeight: walletData.walletStatus.syncHeight || 0,
+          chainHeight: 1016874, // Will be updated by WebSocket
+          message: walletData.walletStatus.syncMessage || 'Connecting to sync stream...',
+          isRescanning: true,
+        });
+        setShowSyncProgress(true);
       }
     } catch (err: any) {
       console.error('Error fetching wallet data:', err);
@@ -102,7 +48,6 @@ export const WalletDashboard = () => {
         if (!data) {
           setError('Initializing wallet status. This may take a moment.');
         }
-        // Don't clear existing data if we have it
       } else if (err.response?.status === 503) {
         setError('Wallet RPC not connected. Please ensure dcrwallet is running.');
       } else {
@@ -113,24 +58,23 @@ export const WalletDashboard = () => {
     }
   };
 
-  // Initial data fetch - check for active rescan first
+  // Initial load - check for active rescan first
   useEffect(() => {
     const initialize = async () => {
-      // First check if there's an active rescan
       try {
         const progress = await getSyncProgress();
-        if (progress.isRescanning && progress.progress < 99) {
-          // Rescan is active - show progress bar and skip wallet data fetch
+        if (progress.isRescanning && progress.progress < 100) {
+          // Active rescan detected - show progress bar only
           console.log('Active rescan detected on load - showing progress bar');
           setSyncProgress(progress);
           setShowSyncProgress(true);
-          setRescanning(true);
           setLoading(false);
-          setError(null); // Clear any errors
-          return; // Don't fetch wallet data
+          // Still fetch wallet data for the status card, but in background
+          fetchData();
+          return;
         }
       } catch (err) {
-        console.log('No active rescan detected, proceeding with normal fetch');
+        console.log('No active rescan, loading wallet data normally');
       }
       
       // No active rescan - fetch wallet data normally
@@ -140,64 +84,89 @@ export const WalletDashboard = () => {
     initialize();
   }, []);
 
-  // Poll wallet data only when NOT rescanning
+  // Auto-refresh wallet data every 10 seconds (but NOT during rescan)
   useEffect(() => {
     if (!showSyncProgress) {
-      // Auto-refresh every 10 seconds when not rescanning
       const interval = setInterval(fetchData, 10000);
       return () => clearInterval(interval);
     }
   }, [showSyncProgress]);
 
-  // Poll sync progress more frequently when rescanning
+  // WebSocket streaming for rescan progress (replaces polling)
   useEffect(() => {
-    if (rescanning || showSyncProgress) {
-      // Start polling immediately
-      fetchSyncProgress();
+    if (showSyncProgress) {
+      console.log('Starting WebSocket stream for rescan progress');
       
-      // Poll every 3 seconds during rescan
-      const syncInterval = setInterval(fetchSyncProgress, 3000);
-      return () => clearInterval(syncInterval);
-    }
-  }, [rescanning, showSyncProgress]);
+      const cleanup = streamRescanProgress(
+        // onProgress callback
+        (progress) => {
+          console.log('Received progress update:', progress);
+          setSyncProgress(progress);
+          
+          // Only hide progress bar when we get explicit completion signal
+          // Don't close on temporary "not rescanning" states
+          if (progress.message === "Rescan complete" && progress.progress >= 99) {
+            console.log('Rescan completed - hiding progress bar');
+            setShowSyncProgress(false);
+            fetchData(); // Refresh wallet data to show updated balances
+          }
+        },
+        // onError callback
+        (error) => {
+          console.error('WebSocket error:', error);
+          setError('Failed to stream rescan progress. Please refresh the page.');
+        },
+        // onClose callback
+        () => {
+          console.log('WebSocket stream closed');
+          // When WebSocket closes, refresh data and hide progress bar
+          setShowSyncProgress(false);
+          fetchData();
+        }
+      );
 
-  const handleImportSuccess = (rescanEnabled: boolean) => {
-    // If rescan is enabled, set rescanning state and show progress bar
-    if (rescanEnabled) {
-      setRescanning(true);
-      setShowSyncProgress(true);
-      setError(null); // Clear any existing errors
-      // Wait 2 seconds for rescan to start writing to logs, then start polling
-      setTimeout(() => {
-        fetchSyncProgress();
-      }, 2000);
-    } else {
-      // No rescan, just refresh data immediately
-      fetchData();
+      // Cleanup WebSocket connection when component unmounts or showSyncProgress changes
+      return cleanup;
     }
+  }, [showSyncProgress]);
+
+  const handleImportSuccess = () => {
+    // Show progress bar after xpub import (WebSocket will auto-connect)
+    setShowSyncProgress(true);
+    setError(null);
+    // Set initial placeholder sync progress
+    setSyncProgress({
+      isRescanning: true,
+      scanHeight: 0,
+      chainHeight: 1,
+      progress: 0,
+      message: 'Connecting to rescan stream...'
+    });
   };
 
   const handleRescan = async () => {
-    if (rescanning) return;
+    if (showSyncProgress) return; // Already rescanning
     
     if (!confirm('This will rescan the entire blockchain from block 0. This may take 30+ minutes. Continue?')) {
       return;
     }
 
     try {
-      setRescanning(true);
-      setShowSyncProgress(true); // Show progress bar immediately
+      // Show progress bar immediately (WebSocket will auto-connect)
+      setShowSyncProgress(true);
+      setSyncProgress({
+        isRescanning: true,
+        scanHeight: 0,
+        chainHeight: 1,
+        progress: 0,
+        message: 'Connecting to rescan stream...'
+      });
+      
       await triggerRescan();
       setError(null);
-      
-      // Start polling sync progress after a brief delay for logs to start
-      setTimeout(() => {
-        fetchSyncProgress();
-      }, 2000); // Wait 2 seconds for rescan to start writing to logs
     } catch (err: any) {
       console.error('Error triggering rescan:', err);
       setError(err.response?.data?.error || err.message || 'Failed to trigger rescan');
-      setRescanning(false); // Only clear on error
       setShowSyncProgress(false);
     }
   };
@@ -208,11 +177,11 @@ export const WalletDashboard = () => {
       <div className="flex justify-end gap-3">
         <button
           onClick={handleRescan}
-          disabled={rescanning || data?.walletStatus.status === 'no_wallet'}
+          disabled={showSyncProgress || data?.walletStatus.status === 'no_wallet'}
           className="px-6 py-3 rounded-lg bg-muted/20 text-foreground font-semibold hover:bg-muted/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <RefreshCw className={`h-5 w-5 ${rescanning ? 'animate-spin' : ''}`} />
-          {rescanning ? 'Rescanning...' : 'Rescan'}
+          <RefreshCw className={`h-5 w-5 ${showSyncProgress ? 'animate-spin' : ''}`} />
+          {showSyncProgress ? 'Rescanning...' : 'Rescan'}
         </button>
         <button
           onClick={() => setShowImportModal(true)}
@@ -233,14 +202,14 @@ export const WalletDashboard = () => {
         />
       )}
 
-      {/* Error Message - hide if sync progress bar is showing */}
+      {/* Error Message - hide during rescan */}
       {error && !showSyncProgress && (
         <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 animate-fade-in">
           <p className="text-red-500 font-medium">{error}</p>
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Loading State - hide during rescan */}
       {loading && !data && !showSyncProgress && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
@@ -248,19 +217,21 @@ export const WalletDashboard = () => {
         </div>
       )}
 
-      {/* Wallet Status */}
-      {data && (
+      {/* Wallet Status - always visible, but hides when unified progress bar is shown */}
+      {data && !showSyncProgress && (
         <WalletStatus
           status={data.walletStatus.status as any}
-          syncProgress={data.walletStatus.syncProgress}
           version={data.walletStatus.version}
-          syncMessage={data.walletStatus.syncMessage}
           unlocked={data.walletStatus.unlocked}
         />
       )}
 
-      {/* Left Column: Account Balance + Accounts | Right Column: Transaction History */}
-      {data && data.walletStatus.status !== 'no_wallet' && (
+      {/* Hide wallet data cards during rescan to prevent RPC flooding */}
+      {!showSyncProgress && (
+        <>
+
+          {/* Left Column: Account Balance + Accounts | Right Column: Transaction History */}
+          {data && data.walletStatus.status !== 'no_wallet' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
           {/* Left Column */}
           <div className="space-y-6">
@@ -290,37 +261,39 @@ export const WalletDashboard = () => {
         </div>
       )}
 
-      {/* Row 2: Ticket Pool | My Tickets */}
-      {data && data.walletStatus.status !== 'no_wallet' && data.stakingInfo && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-          {/* Ticket Pool & Difficulty Info */}
-          <TicketPoolInfo
-            poolSize={data.stakingInfo.poolSize}
-            currentDifficulty={data.stakingInfo.currentDifficulty}
-            estimatedMin={data.stakingInfo.estimatedMin}
-            estimatedMax={data.stakingInfo.estimatedMax}
-            estimatedExpected={data.stakingInfo.estimatedExpected}
-            allMempoolTix={data.stakingInfo.allMempoolTix}
-          />
+          {/* Row 2: Ticket Pool | My Tickets */}
+          {data && data.walletStatus.status !== 'no_wallet' && data.stakingInfo && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+              {/* Ticket Pool & Difficulty Info */}
+              <TicketPoolInfo
+                poolSize={data.stakingInfo.poolSize}
+                currentDifficulty={data.stakingInfo.currentDifficulty}
+                estimatedMin={data.stakingInfo.estimatedMin}
+                estimatedMax={data.stakingInfo.estimatedMax}
+                estimatedExpected={data.stakingInfo.estimatedExpected}
+                allMempoolTix={data.stakingInfo.allMempoolTix}
+              />
 
-          {/* My Tickets Info */}
-          <MyTicketsInfo
-            ownMempoolTix={data.stakingInfo.ownMempoolTix}
-            immature={data.stakingInfo.immature}
-            unspent={data.stakingInfo.unspent}
-            voted={data.stakingInfo.voted}
-            revoked={data.stakingInfo.revoked}
-            unspentExpired={data.stakingInfo.unspentExpired}
-            totalSubsidy={data.stakingInfo.totalSubsidy}
-          />
-        </div>
-      )}
+              {/* My Tickets Info */}
+              <MyTicketsInfo
+                ownMempoolTix={data.stakingInfo.ownMempoolTix}
+                immature={data.stakingInfo.immature}
+                unspent={data.stakingInfo.unspent}
+                voted={data.stakingInfo.voted}
+                revoked={data.stakingInfo.revoked}
+                unspentExpired={data.stakingInfo.unspentExpired}
+                totalSubsidy={data.stakingInfo.totalSubsidy}
+              />
+            </div>
+          )}
 
-      {/* Last Update */}
-      {data && (
-        <div className="text-center text-sm text-muted-foreground animate-fade-in">
-          Last updated: {new Date(data.lastUpdate).toLocaleString()}
-        </div>
+          {/* Last Update */}
+          {data && (
+            <div className="text-center text-sm text-muted-foreground animate-fade-in">
+              Last updated: {new Date(data.lastUpdate).toLocaleString()}
+            </div>
+          )}
+        </>
       )}
 
       {/* Import Xpub Modal */}

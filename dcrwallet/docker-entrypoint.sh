@@ -167,6 +167,7 @@ exec dcrwallet \
     --rpcconnect="${DCRD_RPC_HOST:-dcrd}:9109" \
     --cafile="${RPC_CERT}" \
     --grpclisten=0.0.0.0:9111 \
+    --clientcafile="${RPC_CERT}" \
     --pass="${PRIVATE_PASS}" \
     "$@"
 

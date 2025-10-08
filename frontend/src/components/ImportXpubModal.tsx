@@ -9,13 +9,12 @@ import { importXpub } from '../services/api';
 interface ImportXpubModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (rescanEnabled: boolean) => void;
+  onSuccess: () => void;
 }
 
 export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalProps) => {
   const [xpub, setXpub] = useState('');
   const [accountName, setAccountName] = useState('imported');
-  const [rescan, setRescan] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -52,12 +51,13 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
     setLoading(true);
 
     try {
-      const result = await importXpub(xpub.trim(), accountName.trim(), rescan);
+      // Always rescan when importing xpub to find historical transactions
+      const result = await importXpub(xpub.trim(), accountName.trim(), true);
       
       if (result.success) {
         setSuccess(true);
         setTimeout(() => {
-          onSuccess(rescan); // Pass rescan state to parent
+          onSuccess(); // Trigger rescan progress bar in parent
           handleClose();
         }, 2000);
       } else {
@@ -75,7 +75,6 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
     if (!loading) {
       setXpub('');
       setAccountName('imported');
-      setRescan(true);
       setError('');
       setSuccess(false);
       onClose();
@@ -124,7 +123,7 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
               <div>
                 <p className="font-medium text-success">Import Successful!</p>
                 <p className="text-sm text-success/80 mt-1">
-                  {rescan ? 'Starting blockchain rescan...' : 'Xpub imported successfully'}
+                  Starting blockchain rescan to find your transactions...
                 </p>
               </div>
             </div>
@@ -180,25 +179,12 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
             </p>
           </div>
 
-          {/* Rescan Checkbox */}
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-info/5 border border-info/10">
-            <input
-              id="rescan"
-              type="checkbox"
-              checked={rescan}
-              onChange={(e) => setRescan(e.target.checked)}
-              disabled={loading || success}
-              className="mt-1 h-4 w-4 rounded border-border/50 text-primary focus:ring-primary/20"
-            />
-            <div className="flex-1">
-              <label htmlFor="rescan" className="block text-sm font-medium cursor-pointer">
-                Perform full blockchain rescan (Optional)
-              </label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Note: Import automatically rescans from the account's birth height. 
-                Enable this for a complete rescan from block 0 if needed (30+ minutes).
-              </p>
-            </div>
+          {/* Info about automatic rescan */}
+          <div className="p-4 rounded-lg bg-info/5 border border-info/10">
+            <p className="text-sm text-muted-foreground">
+              <strong>Note:</strong> After import, the wallet will automatically rescan the blockchain from block 0 
+              to find all your historical transactions. This typically takes 5-30 minutes depending on blockchain size.
+            </p>
           </div>
 
           {/* Example */}
