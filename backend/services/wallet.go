@@ -8,13 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"os"
-	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,66 +22,123 @@ var (
 	// Track wallet sync
 	prevWalletHeight int64
 	walletSyncMutex  sync.Mutex
+
+	// Track pending rescan requests
+	pendingRescanMutex sync.RWMutex
+	pendingRescanTime  *time.Time
 )
 
-func ParseWalletLogsForRescan() (bool, int64, error) {
-	// Path to wallet log file (mounted from dcrwallet-data volume)
-	logPath := "/wallet-data/logs/mainnet/dcrwallet.log"
-
-	// Check if log file exists
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		return false, 0, nil // No log file yet, wallet might be starting
-	}
-
-	// Read the log file
-	data, err := ioutil.ReadFile(logPath)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to read wallet log: %w", err)
-	}
-
-	// Parse logs for rescan messages with timestamps: "2025-10-05 15:23:16.672 [INF] WLLT: Rescanning block range [414000, 415999]..."
-	// Regex to extract timestamp and block range
-	rescanRegex := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}).*Rescanning block range \[(\d+), (\d+)\]`)
-
-	lines := strings.Split(string(data), "\n")
-
-	// Check the most recent rescan message (from the end, last ~100 lines for performance)
-	startIndex := len(lines) - 100
-	if startIndex < 0 {
-		startIndex = 0
-	}
-
+// SetPendingRescan marks that a rescan has been requested
+func SetPendingRescan() {
+	pendingRescanMutex.Lock()
+	defer pendingRescanMutex.Unlock()
 	now := time.Now()
-	maxAge := 5 * time.Second // Consider rescan messages older than 5 seconds as stale (logs update every second during active rescan)
+	pendingRescanTime = &now
+	log.Printf("Rescan request marked as pending at %v", now)
+}
 
-	for i := len(lines) - 1; i >= startIndex; i-- {
-		line := lines[i]
-		if matches := rescanRegex.FindStringSubmatch(line); matches != nil {
-			// Parse the timestamp from the log line
-			timestampStr := matches[1]
-			logTime, err := time.Parse("2006-01-02 15:04:05.000", timestampStr)
-			if err != nil {
-				log.Printf("Warning: Failed to parse log timestamp '%s': %v", timestampStr, err)
-				continue
-			}
+// ClearPendingRescan clears the pending rescan flag
+func ClearPendingRescan() {
+	pendingRescanMutex.Lock()
+	defer pendingRescanMutex.Unlock()
+	if pendingRescanTime != nil {
+		log.Printf("Clearing pending rescan flag (was pending since %v)", *pendingRescanTime)
+	}
+	pendingRescanTime = nil
+}
 
-			// Check if the log entry is recent enough to be considered an active rescan
-			age := now.Sub(logTime)
-			if age > maxAge {
-				log.Printf("Rescan message found but is stale (age: %v, max: %v) - considering rescan as inactive", age, maxAge)
-				return false, 0, nil
-			}
+// IsPendingRescan checks if a rescan is pending and returns how long to wait
+func IsPendingRescan() (bool, int) {
+	pendingRescanMutex.RLock()
+	defer pendingRescanMutex.RUnlock()
 
-			// Extract the end block of the range being scanned
-			endBlock, err := strconv.ParseInt(matches[3], 10, 64)
-			if err == nil {
-				log.Printf("Active rescan detected: block %d (log age: %v)", endBlock, age)
-				return true, endBlock, nil
-			}
+	if pendingRescanTime == nil {
+		return false, 0
+	}
+
+	// Check if pending rescan is recent (within last 5 minutes)
+	elapsed := time.Since(*pendingRescanTime)
+	if elapsed > 5*time.Minute {
+		return false, 0
+	}
+
+	// Wait up to 120 seconds (2 minutes) for rescan to start when pending
+	return true, 120
+}
+
+// CheckRescanProgress checks if a rescan is active using ONLY the pending flag and RPC
+// No log parsing whatsoever - clean RPC-based solution
+func CheckRescanProgress() (bool, int64, error) {
+	if rpc.WalletClient == nil {
+		return false, 0, fmt.Errorf("wallet RPC client not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Always get wallet and chain height
+	_, walletHeight, err := rpc.WalletClient.GetBestBlock(ctx)
+	if err != nil {
+		// Can't get wallet height - might be busy
+		isPending, _ := IsPendingRescan()
+		return isPending, 0, nil
+	}
+
+	chainHeight := int64(0)
+	if rpc.DcrdClient != nil {
+		height, err := rpc.DcrdClient.GetBlockCount(ctx)
+		if err == nil {
+			chainHeight = height
 		}
 	}
 
-	return false, 0, nil
+	// Check if we have a pending rescan
+	isPending, _ := IsPendingRescan()
+
+	if isPending {
+		// Pending rescan - could be discovering addresses OR rescanning blocks
+		// Check how far behind we are
+		blocksBehind := chainHeight - walletHeight
+
+		if blocksBehind > 100 {
+			// Significantly behind - actively rescanning!
+			// Clear the pending flag since rescan is confirmed active
+			ClearPendingRescan()
+			return true, walletHeight, nil
+		}
+
+		// At chain tip - probably in address discovery phase
+		// Return as rescanning but with current height
+		return true, walletHeight, nil
+	}
+
+	// No pending flag - check for unexpected rescan activity
+	blocksBehind := chainHeight - walletHeight
+
+	// Track height changes for progress detection
+	walletSyncMutex.Lock()
+	deltaHeight := walletHeight - prevWalletHeight
+	prevWalletHeight = walletHeight
+	walletSyncMutex.Unlock()
+
+	// Detect rescans without pending flag (e.g., from page reload)
+	isRescanning := false
+	if blocksBehind > 100 {
+		// Significantly behind - rescanning
+		isRescanning = true
+	} else if blocksBehind > 2 && deltaHeight > 50 {
+		// Slightly behind + rapid progress = rescanning
+		isRescanning = true
+	}
+
+	return isRescanning, walletHeight, nil
+}
+
+// Deprecated: Use CheckRescanProgress instead
+// ParseWalletLogsForRescan is kept for backward compatibility but should not be used
+func ParseWalletLogsForRescan() (bool, int64, error) {
+	// Redirect to RPC-based check
+	return CheckRescanProgress()
 }
 
 func FetchWalletStatus() (*types.WalletStatus, error) {

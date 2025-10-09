@@ -56,8 +56,10 @@ export const ImportXpubModal = ({ isOpen, onClose, onSuccess }: ImportXpubModalP
       
       if (result.success) {
         setSuccess(true);
+        // Immediately trigger preparing state in parent
+        onSuccess();
+        // Close modal after showing success message briefly
         setTimeout(() => {
-          onSuccess(); // Trigger rescan progress bar in parent
           handleClose();
         }, 2000);
       } else {
