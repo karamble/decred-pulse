@@ -88,7 +88,7 @@ export const SearchBar = () => {
       case 'address':
         return 'Address detected...';
       default:
-        return 'Search block height, tx hash, or block hash...';
+        return 'Search block height, tx hash, block hash, or address...';
     }
   };
 
@@ -129,7 +129,7 @@ export const SearchBar = () => {
       )}
       
       <div className="mt-2 text-xs text-muted-foreground">
-        Search by: Block height (e.g., 1000000) • Transaction hash • Block hash
+        Search by: Block height (e.g., 1000000) • Transaction hash • Block hash • Address
       </div>
     </form>
   );

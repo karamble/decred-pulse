@@ -12,6 +12,7 @@ import { SyncProgressBar } from '../components/SyncProgressBar';
 import { TicketPoolInfo } from '../components/TicketPoolInfo';
 import { MyTicketsInfo } from '../components/MyTicketsInfo';
 import { TransactionHistory } from '../components/TransactionHistory';
+import { AddressBookmarksCard } from '../components/wallet/AddressBookmarksCard';
 import { getWalletDashboard, WalletDashboardData, triggerRescan, getSyncProgress, streamRescanProgress, SyncProgressData } from '../services/api';
 
 export const WalletDashboard = () => {
@@ -300,6 +301,9 @@ export const WalletDashboard = () => {
               />
             </div>
           )}
+
+          {/* Address Bookmarks */}
+          <AddressBookmarksCard />
 
           {/* Last Update */}
           {data && (

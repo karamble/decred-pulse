@@ -488,10 +488,18 @@ func UniversalSearch(ctx context.Context, query string) (*types.SearchResult, er
 		}, nil
 
 	case "address":
+		info, err := FetchAddressInfo(ctx, query)
+		if err != nil {
+			return &types.SearchResult{
+				Type:  "address",
+				Found: false,
+				Error: "Failed to fetch address information",
+			}, nil
+		}
 		return &types.SearchResult{
 			Type:  "address",
-			Found: false,
-			Error: "Address lookup not yet implemented",
+			Found: true,
+			Data:  info,
 		}, nil
 
 	default:
