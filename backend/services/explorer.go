@@ -50,6 +50,65 @@ func FetchRecentBlocks(ctx context.Context, count int) ([]types.BlockSummary, er
 	return blocks, nil
 }
 
+// FetchRecentBlocksPaginated gets blocks with pagination
+func FetchRecentBlocksPaginated(ctx context.Context, page int, pageSize int) (*types.PaginatedBlocksResponse, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100 // Limit to 100 blocks per page
+	}
+
+	// Get current block count (total blocks)
+	currentHeight, err := rpc.DcrdClient.GetBlockCount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block count: %w", err)
+	}
+
+	totalBlocks := currentHeight + 1 // +1 because height is 0-indexed
+	totalPages := int((totalBlocks + int64(pageSize) - 1) / int64(pageSize))
+
+	// Calculate start and end heights for this page
+	// Page 1 should show the most recent blocks
+	startHeight := currentHeight - int64((page-1)*pageSize)
+	endHeight := startHeight - int64(pageSize) + 1
+
+	if endHeight < 0 {
+		endHeight = 0
+	}
+	if startHeight < 0 {
+		return &types.PaginatedBlocksResponse{
+			Blocks:      []types.BlockSummary{},
+			CurrentPage: page,
+			PageSize:    pageSize,
+			TotalBlocks: totalBlocks,
+			TotalPages:  totalPages,
+		}, nil
+	}
+
+	// Fetch blocks for this page
+	blocks := make([]types.BlockSummary, 0, pageSize)
+	for h := startHeight; h >= endHeight; h-- {
+		block, err := FetchBlockSummaryByHeight(ctx, h)
+		if err != nil {
+			log.Printf("Warning: Failed to fetch block %d: %v", h, err)
+			continue
+		}
+		blocks = append(blocks, *block)
+	}
+
+	return &types.PaginatedBlocksResponse{
+		Blocks:      blocks,
+		CurrentPage: page,
+		PageSize:    pageSize,
+		TotalBlocks: totalBlocks,
+		TotalPages:  totalPages,
+	}, nil
+}
+
 // FetchBlockSummaryByHeight gets basic block info by height
 func FetchBlockSummaryByHeight(ctx context.Context, height int64) (*types.BlockSummary, error) {
 	// Get block hash

@@ -105,3 +105,12 @@ type AddressInfo struct {
 	Tickets  []string `json:"tickets"`
 	HasIndex bool     `json:"hasIndex"` // whether address indexing is enabled
 }
+
+// PaginatedBlocksResponse for paginated block listings
+type PaginatedBlocksResponse struct {
+	Blocks      []BlockSummary `json:"blocks"`
+	CurrentPage int            `json:"currentPage"`
+	PageSize    int            `json:"pageSize"`
+	TotalBlocks int64          `json:"totalBlocks"`
+	TotalPages  int            `json:"totalPages"`
+}

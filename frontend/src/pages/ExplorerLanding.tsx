@@ -5,30 +5,48 @@
 import { useEffect, useState } from 'react';
 import { Box, ArrowRightLeft } from 'lucide-react';
 import { SearchBar } from '../components/explorer/SearchBar';
-import { getRecentBlocks, BlockSummary } from '../services/explorerApi';
+import { Pagination } from '../components/explorer/Pagination';
+import { getRecentBlocksPaginated, BlockSummary } from '../services/explorerApi';
 import { useNavigate } from 'react-router-dom';
 
 export const ExplorerLanding = () => {
   const [recentBlocks, setRecentBlocks] = useState<BlockSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalBlocks, setTotalBlocks] = useState(0);
+  const pageSize = 20;
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchRecentBlocks();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchRecentBlocks, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    fetchRecentBlocks(currentPage);
+  }, [currentPage]);
 
-  const fetchRecentBlocks = async () => {
+  useEffect(() => {
+    // Refresh every 30 seconds, but only if on first page
+    if (currentPage === 1) {
+      const interval = setInterval(() => fetchRecentBlocks(1), 30000);
+      return () => clearInterval(interval);
+    }
+  }, [currentPage]);
+
+  const fetchRecentBlocks = async (page: number) => {
     try {
-      const blocks = await getRecentBlocks(10);
-      setRecentBlocks(blocks);
+      setLoading(true);
+      const response = await getRecentBlocksPaginated(page, pageSize);
+      setRecentBlocks(response.blocks);
+      setTotalPages(response.totalPages);
+      setTotalBlocks(response.totalBlocks);
       setLoading(false);
     } catch (err) {
       console.error('Failed to fetch recent blocks:', err);
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const formatTimeAgo = (timestamp: string) => {
@@ -61,9 +79,14 @@ export const ExplorerLanding = () => {
 
         {/* Recent Blocks */}
         <div className="p-6 rounded-xl bg-gradient-card backdrop-blur-sm border border-border/50">
-          <div className="flex items-center gap-2 mb-6">
-            <Box className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Recent Blocks</h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Box className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-semibold">Recent Blocks</h2>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Total: {totalBlocks.toLocaleString()} blocks
+            </div>
           </div>
 
           {loading ? (
@@ -113,6 +136,16 @@ export const ExplorerLanding = () => {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {/* Pagination */}
+          {!loading && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              loading={loading}
+            />
           )}
         </div>
       </div>
