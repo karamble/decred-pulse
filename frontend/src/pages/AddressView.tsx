@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, Ticket, CheckCircle, XCircle, Info } from 'lucide-react';
 import { CopyButton } from '../components/explorer/CopyButton';
+import { AddressBookmarkButton } from '../components/explorer/AddressBookmarkButton';
 import { getAddressInfo, AddressInfo } from '../services/explorerApi';
 
 export const AddressView = () => {
@@ -93,6 +94,7 @@ export const AddressView = () => {
                 {address}
               </code>
               <CopyButton text={address || ''} />
+              <AddressBookmarkButton address={address || ''} />
             </div>
           </div>
         </div>
@@ -166,7 +168,7 @@ export const AddressView = () => {
           <div className="flex-1">
             <h3 className="font-semibold mb-2 text-warning">Limited Address Information</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              This dashboard provides basic address information but does not store a local database of all transactions. 
+              This dashboard provides basic address information but does not store a local database of all transactions with an addressindex. 
               For full transaction history and balance information of any address, please visit the official Decred block explorer.
             </p>
             <p className="text-sm text-muted-foreground">
@@ -175,12 +177,12 @@ export const AddressView = () => {
             <p className="text-sm text-muted-foreground mt-3">
               <strong className="text-foreground">Full address details:</strong>{' '}
               <a 
-                href="https://dcrdata.decred.org/"
+                href={`https://dcrdata.decred.org/address/${address}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
-                dcrdata.decred.org
+                dcrdata.decred.org/address/{address}
               </a>
             </p>
           </div>
