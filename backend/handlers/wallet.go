@@ -8,17 +8,120 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"decred-pulse-backend/rpc"
 	"decred-pulse-backend/services"
 	"decred-pulse-backend/types"
 
+	pb "decred.org/dcrwallet/v4/rpc/walletrpc"
+
 	"github.com/gorilla/websocket"
 )
+
+// Global rescan stream management
+var (
+	activeRescanStream   pb.WalletService_RescanClient
+	activeRescanMutex    sync.RWMutex
+	rescanStreamChannels []chan *pb.RescanResponse
+	rescanChannelsMutex  sync.Mutex
+)
+
+// startRescanViaGrpc initiates a blockchain rescan using gRPC and broadcasts progress
+func startRescanViaGrpc(beginHeight int32) {
+	if rpc.WalletGrpcClient == nil {
+		log.Println("❌ Cannot start gRPC rescan: gRPC client not initialized")
+		return
+	}
+
+	ctx := context.Background()
+	req := &pb.RescanRequest{
+		BeginHeight: beginHeight,
+	}
+
+	stream, err := rpc.WalletGrpcClient.Rescan(ctx, req)
+	if err != nil {
+		log.Printf("❌ Failed to start gRPC rescan: %v", err)
+		return
+	}
+
+	log.Println("✅ gRPC rescan stream started - broadcasting progress updates")
+
+	// Store active stream
+	activeRescanMutex.Lock()
+	activeRescanStream = stream
+	activeRescanMutex.Unlock()
+
+	// Receive and broadcast progress updates
+	for {
+		update, err := stream.Recv()
+		if err == io.EOF {
+			log.Println("✅ gRPC rescan stream completed")
+			break
+		}
+		if err != nil {
+			log.Printf("❌ gRPC rescan stream error: %v", err)
+			break
+		}
+
+		// Broadcast to all listening WebSocket clients
+		rescanChannelsMutex.Lock()
+		for _, ch := range rescanStreamChannels {
+			select {
+			case ch <- update:
+			default:
+				// Channel full, skip
+			}
+		}
+		rescanChannelsMutex.Unlock()
+
+		log.Printf("📊 Rescan progress: block %d", update.RescannedThrough)
+	}
+
+	// Clear active stream
+	activeRescanMutex.Lock()
+	activeRescanStream = nil
+	activeRescanMutex.Unlock()
+
+	// Notify all listeners that stream ended
+	rescanChannelsMutex.Lock()
+	for _, ch := range rescanStreamChannels {
+		close(ch)
+	}
+	rescanStreamChannels = nil
+	rescanChannelsMutex.Unlock()
+
+	log.Println("✅ Rescan completed - all transactions imported")
+}
+
+// subscribeToRescanUpdates creates a channel that receives rescan progress updates
+func subscribeToRescanUpdates() chan *pb.RescanResponse {
+	ch := make(chan *pb.RescanResponse, 10)
+	rescanChannelsMutex.Lock()
+	rescanStreamChannels = append(rescanStreamChannels, ch)
+	rescanChannelsMutex.Unlock()
+	return ch
+}
+
+// unsubscribeFromRescanUpdates removes a channel from receiving updates
+func unsubscribeFromRescanUpdates(ch chan *pb.RescanResponse) {
+	rescanChannelsMutex.Lock()
+	defer rescanChannelsMutex.Unlock()
+
+	for i, c := range rescanStreamChannels {
+		if c == ch {
+			rescanStreamChannels = append(rescanStreamChannels[:i], rescanStreamChannels[i+1:]...)
+			break
+		}
+	}
+}
+
+// Pending rescan tracking is now in services package
 
 // GetWalletStatusHandler handles requests for wallet status
 func GetWalletStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +221,7 @@ func ImportXpubHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Starting xpub import for account: %s", accountName)
 
 	// Start the import in a goroutine
+	// WebSocket stream will automatically detect and show rescan progress
 	go func() {
 		ctx := context.Background()
 
@@ -135,24 +239,22 @@ func ImportXpubHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("Xpub import completed: %v", string(result))
 
-		// Step 2: Discover address usage across entire blockchain
+		// Step 2: Discover address usage
 		log.Printf("Step 2/3: Discovering address usage across blockchain...")
 		_, err = rpc.WalletClient.RawRequest(ctx, "discoverusage", nil)
 		if err != nil {
 			log.Printf("Failed to discover address usage: %v", err)
 			return
 		}
-		log.Printf("Address discovery completed - wallet database updated with all used addresses")
+		log.Printf("Address discovery completed - wallet database updated")
 
-		// Step 3: Rescan blockchain from block 0 to fetch all transactions
-		log.Printf("Step 3/3: Rescanning blockchain from block 0 to fetch transactions...")
-		rescanParams := []json.RawMessage{json.RawMessage("0")}
-		_, rescanErr := rpc.WalletClient.RawRequest(ctx, "rescanwallet", rescanParams)
-		if rescanErr != nil {
-			log.Printf("Rescan completed with error: %v", rescanErr)
-		} else {
-			log.Printf("Rescan completed successfully - all transactions imported")
-		}
+		// Step 3: Wait for wallet to be ready, then rescan from block 0 via gRPC
+		log.Printf("Step 3/3: Waiting 5 seconds for wallet to load transaction filter...")
+		time.Sleep(5 * time.Second)
+
+		// Start gRPC rescan from genesis
+		log.Printf("Starting gRPC rescan from block 0...")
+		startRescanViaGrpc(0)
 	}()
 
 	// Return immediately - the frontend will poll wallet status to track rescan progress
@@ -179,30 +281,28 @@ func RescanWalletHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start rescan in a goroutine - it's a long-running operation
-	// Frontend will poll wallet status to track progress via log parsing
-	log.Printf("Starting wallet rescan from block %d", req.BeginHeight)
+	// The gRPC Rescan() method will stream progress updates that the WebSocket handler can forward
+	log.Printf("Starting wallet rescan from block %d via gRPC", req.BeginHeight)
 
 	go func() {
 		ctx := context.Background()
 
-		// Step 1: Discover address usage across entire blockchain
+		// Step 1: Discover address usage via JSON-RPC
 		log.Printf("Step 1/2: Discovering address usage across blockchain for all accounts...")
 		_, err := rpc.WalletClient.RawRequest(ctx, "discoverusage", nil)
 		if err != nil {
 			log.Printf("Failed to discover address usage: %v", err)
 			return
 		}
-		log.Printf("Address discovery completed - wallet database updated with all used addresses")
+		log.Printf("Address discovery completed - wallet database updated")
 
-		// Step 2: Rescan blockchain from specified height to fetch transactions
-		log.Printf("Step 2/2: Rescanning blockchain from block %d to fetch transactions...", req.BeginHeight)
-		rescanParams := []json.RawMessage{json.RawMessage(fmt.Sprintf("%d", req.BeginHeight))}
-		_, rescanErr := rpc.WalletClient.RawRequest(ctx, "rescanwallet", rescanParams)
-		if rescanErr != nil {
-			log.Printf("Rescan completed with error: %v", rescanErr)
-		} else {
-			log.Printf("Rescan completed successfully - all transactions imported")
-		}
+		// Step 2: Wait for wallet to load transaction filter
+		log.Printf("Step 2/2: Waiting 5 seconds for wallet to load transaction filter...")
+		time.Sleep(5 * time.Second)
+
+		// Step 3: Start rescan via gRPC - this provides a progress stream
+		log.Printf("Starting gRPC rescan from block %d...", req.BeginHeight)
+		startRescanViaGrpc(int32(req.BeginHeight))
 	}()
 
 	// Return immediately so frontend can start polling for progress
@@ -330,15 +430,23 @@ func StreamRescanProgressHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Starting rescan progress monitoring (polling log-based method)")
 
 	// Poll rescan progress and stream to WebSocket
-	// Note: Using log-based progress detection as gRPC Rescan() would start a new rescan
-	// TODO: Implement proper gRPC TransactionNotifications subscription in future
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	// Track consecutive "not rescanning" responses to avoid premature close
 	notRescanningCount := 0
-	const maxNotRescanningBeforeClose = 5 // Wait for 5 consecutive "not rescanning" before closing
-	const gracePeriodTicks = 5            // Don't count "not rescanning" for first 5 seconds (grace period)
+
+	// Check if a rescan is pending
+	isPending, pendingGracePeriod := services.IsPendingRescan()
+	gracePeriodTicks := 8            // Default grace period
+	maxNotRescanningBeforeClose := 5 // Default: Wait for 5 consecutive "not rescanning" before closing
+
+	if isPending {
+		gracePeriodTicks = pendingGracePeriod
+		maxNotRescanningBeforeClose = 30 // Wait 30 more seconds after grace period when rescan is pending
+		log.Printf("Pending rescan detected - using extended grace period of %d seconds and extended timeout of %d checks", gracePeriodTicks, maxNotRescanningBeforeClose)
+	}
+
 	tickCount := 0
 
 	for {
@@ -378,6 +486,7 @@ func StreamRescanProgressHandler(w http.ResponseWriter, r *http.Request) {
 				progressData["message"] = fmt.Sprintf("Rescanning... %d/%d blocks", scanHeight, chainHeight)
 				log.Printf("Rescan progress: %d/%d (%.2f%%)", scanHeight, chainHeight, progress)
 				notRescanningCount = 0 // Reset counter
+				// Pending rescan flag is cleared automatically in CheckRescanProgress
 			} else {
 				// Only start counting "not rescanning" after grace period
 				if tickCount > gracePeriodTicks {
@@ -386,7 +495,11 @@ func StreamRescanProgressHandler(w http.ResponseWriter, r *http.Request) {
 					progressData["message"] = "Checking rescan status..."
 				} else {
 					log.Printf("Grace period: %d/%d seconds - waiting for rescan to start", tickCount, gracePeriodTicks)
-					progressData["message"] = "Starting rescan..."
+					if isPending {
+						progressData["message"] = "Discovering addresses, rescan will start soon..."
+					} else {
+						progressData["message"] = "Starting rescan..."
+					}
 				}
 			}
 
@@ -402,6 +515,7 @@ func StreamRescanProgressHandler(w http.ResponseWriter, r *http.Request) {
 				progressData["message"] = "Rescan complete"
 				progressData["isRescanning"] = false
 				conn.WriteJSON(progressData)
+				services.ClearPendingRescan() // Clear pending flag when closing
 				return
 			}
 		}

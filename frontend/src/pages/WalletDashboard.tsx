@@ -21,6 +21,7 @@ export const WalletDashboard = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgressData | null>(null);
   const [showSyncProgress, setShowSyncProgress] = useState(false);
+  const [isPreparingRescan, setIsPreparingRescan] = useState(false); // Immediate loading state
 
   const fetchData = async () => {
     try {
@@ -92,82 +93,83 @@ export const WalletDashboard = () => {
     }
   }, [showSyncProgress]);
 
-  // WebSocket streaming for rescan progress (replaces polling)
+  // WebSocket streaming for wallet sync status (always active, purely reactive)
   useEffect(() => {
-    if (showSyncProgress) {
-      console.log('Starting WebSocket stream for rescan progress');
-      
-      const cleanup = streamRescanProgress(
-        // onProgress callback
-        (progress) => {
-          console.log('Received progress update:', progress);
-          setSyncProgress(progress);
-          
-          // Only hide progress bar when we get explicit completion signal
-          // Don't close on temporary "not rescanning" states
-          if (progress.message === "Rescan complete" && progress.progress >= 99) {
-            console.log('Rescan completed - hiding progress bar');
-            setShowSyncProgress(false);
-            fetchData(); // Refresh wallet data to show updated balances
+    console.log('🔌 Starting continuous wallet sync monitoring stream');
+    
+    const cleanup = streamRescanProgress(
+      // onProgress callback - called every second with wallet state
+      (progress) => {
+        console.log('📊 Sync update:', {
+          isRescanning: progress.isRescanning,
+          scanHeight: progress.scanHeight,
+          chainHeight: progress.chainHeight,
+          progress: progress.progress,
+          message: progress.message
+        });
+        
+        // Purely reactive: Show progress bar when rescanning, hide when not
+        if (progress.isRescanning) {
+          // Wallet is behind chain - show progress bar
+          if (!showSyncProgress) {
+            console.log('✅ Rescan active - SHOWING progress bar');
           }
-        },
-        // onError callback
-        (error) => {
-          console.error('WebSocket error:', error);
-          setError('Failed to stream rescan progress. Please refresh the page.');
-        },
-        // onClose callback
-        () => {
-          console.log('WebSocket stream closed');
-          // When WebSocket closes, refresh data and hide progress bar
+          setShowSyncProgress(true);
+          setSyncProgress(progress);
+          setIsPreparingRescan(false); // Clear preparing state once actual rescan starts
+        } else {
+          // Wallet is synced - hide progress bar
+          if (showSyncProgress) {
+            console.log('✅ Wallet synced - HIDING progress bar');
+          }
           setShowSyncProgress(false);
-          fetchData();
+          setIsPreparingRescan(false); // Clear preparing state
         }
-      );
+      },
+      // onError callback
+      (error) => {
+        console.error('❌ WebSocket error:', error);
+      },
+      // onClose callback
+      () => {
+        console.log('🔌 WebSocket stream closed - wallet fully synced');
+        setShowSyncProgress(false);
+        fetchData(); // Refresh wallet data
+      }
+    );
 
-      // Cleanup WebSocket connection when component unmounts or showSyncProgress changes
-      return cleanup;
-    }
-  }, [showSyncProgress]);
+    // Cleanup WebSocket connection when component unmounts
+    return cleanup;
+  }, []); // Only run once on mount
 
   const handleImportSuccess = () => {
-    // Show progress bar after xpub import (WebSocket will auto-connect)
-    setShowSyncProgress(true);
+    // Show immediate loading state
+    setIsPreparingRescan(true);
     setError(null);
-    // Set initial placeholder sync progress
-    setSyncProgress({
-      isRescanning: true,
-      scanHeight: 0,
-      chainHeight: 1,
-      progress: 0,
-      message: 'Connecting to rescan stream...'
-    });
+    setShowImportModal(false);
+    console.log('Xpub import initiated - showing preparing state');
+    // WebSocket stream will automatically detect and show rescan progress
   };
 
   const handleRescan = async () => {
-    if (showSyncProgress) return; // Already rescanning
+    if (showSyncProgress || isPreparingRescan) return; // Already rescanning
     
     if (!confirm('This will rescan the entire blockchain from block 0. This may take 30+ minutes. Continue?')) {
       return;
     }
 
     try {
-      // Show progress bar immediately (WebSocket will auto-connect)
-      setShowSyncProgress(true);
-      setSyncProgress({
-        isRescanning: true,
-        scanHeight: 0,
-        chainHeight: 1,
-        progress: 0,
-        message: 'Connecting to rescan stream...'
-      });
+      // Show immediate loading state
+      setIsPreparingRescan(true);
+      setError(null);
+      console.log('Rescan initiated - showing preparing state');
       
       await triggerRescan();
-      setError(null);
+      // WebSocket stream will automatically detect and show rescan progress
     } catch (err: any) {
       console.error('Error triggering rescan:', err);
       setError(err.response?.data?.error || err.message || 'Failed to trigger rescan');
-      setShowSyncProgress(false);
+      setIsPreparingRescan(false); // Clear preparing state on error
     }
   };
 
@@ -177,20 +179,32 @@ export const WalletDashboard = () => {
       <div className="flex justify-end gap-3">
         <button
           onClick={handleRescan}
-          disabled={showSyncProgress || data?.walletStatus.status === 'no_wallet'}
+          disabled={showSyncProgress || isPreparingRescan || data?.walletStatus.status === 'no_wallet'}
           className="px-6 py-3 rounded-lg bg-muted/20 text-foreground font-semibold hover:bg-muted/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <RefreshCw className={`h-5 w-5 ${showSyncProgress ? 'animate-spin' : ''}`} />
-          {showSyncProgress ? 'Rescanning...' : 'Rescan'}
+          <RefreshCw className={`h-5 w-5 ${(showSyncProgress || isPreparingRescan) ? 'animate-spin' : ''}`} />
+          {isPreparingRescan ? 'Preparing...' : showSyncProgress ? 'Rescanning...' : 'Rescan'}
         </button>
         <button
           onClick={() => setShowImportModal(true)}
-          className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold transition-all flex items-center gap-2"
+          disabled={showSyncProgress || isPreparingRescan}
+          className="px-6 py-3 rounded-lg bg-gradient-primary text-white font-semibold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-5 w-5" />
           Add X-Pub
         </button>
       </div>
+
+      {/* Preparing State - immediate feedback when rescan/import is clicked */}
+      {isPreparingRescan && (
+        <div className="p-8 rounded-lg bg-card border border-border text-center animate-fade-in">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mb-4"></div>
+          <h3 className="text-lg font-semibold mb-2">Preparing Rescan...</h3>
+          <p className="text-muted-foreground">
+            Discovering addresses and preparing blockchain scan. This may take a few moments.
+          </p>
+        </div>
+      )}
 
       {/* Sync Progress Bar - shown during rescan */}
       {showSyncProgress && syncProgress && (
@@ -203,22 +217,22 @@ export const WalletDashboard = () => {
       )}
 
       {/* Error Message - hide during rescan */}
-      {error && !showSyncProgress && (
+      {error && !showSyncProgress && !isPreparingRescan && (
         <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 animate-fade-in">
           <p className="text-red-500 font-medium">{error}</p>
         </div>
       )}
 
-      {/* Loading State - hide during rescan */}
-      {loading && !data && !showSyncProgress && (
+      {/* Loading State - hide during rescan/preparing */}
+      {loading && !data && !showSyncProgress && !isPreparingRescan && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
           <p className="mt-4 text-muted-foreground">Loading wallet data...</p>
         </div>
       )}
 
-      {/* Wallet Status - always visible, but hides when unified progress bar is shown */}
-      {data && !showSyncProgress && (
+      {/* Wallet Status - always visible, but hides when unified progress bar or preparing is shown */}
+      {data && !showSyncProgress && !isPreparingRescan && (
         <WalletStatus
           status={data.walletStatus.status as any}
           version={data.walletStatus.version}
@@ -226,8 +240,8 @@ export const WalletDashboard = () => {
         />
       )}
 
-      {/* Hide wallet data cards during rescan to prevent RPC flooding */}
-      {!showSyncProgress && (
+      {/* Hide wallet data cards during rescan/preparing to prevent RPC flooding */}
+      {!showSyncProgress && !isPreparingRescan && (
         <>
 
           {/* Left Column: Account Balance + Accounts | Right Column: Transaction History */}
@@ -255,7 +269,7 @@ export const WalletDashboard = () => {
           </div>
 
           {/* Right Column: Transaction History */}
-          {!loading && !showSyncProgress && (
+          {!loading && !showSyncProgress && !isPreparingRescan && (
             <TransactionHistory />
           )}
         </div>
