@@ -39,21 +39,33 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// GetRecentBlocksHandler returns a list of recent blocks
+// GetRecentBlocksHandler returns a list of recent blocks with pagination
 func GetRecentBlocksHandler(w http.ResponseWriter, r *http.Request) {
-	// Get count parameter (default 10, max 50)
-	countStr := r.URL.Query().Get("count")
-	count := 10
-	if countStr != "" {
-		if c, err := strconv.Atoi(countStr); err == nil && c > 0 {
-			count = c
+	// Get page parameter (default 1)
+	pageStr := r.URL.Query().Get("page")
+	page := 1
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	// Get pageSize parameter (default 10, max 100)
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	pageSize := 10
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+			if pageSize > 100 {
+				pageSize = 100 // Limit to 100 blocks per page
+			}
 		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	blocks, err := services.FetchRecentBlocks(ctx, count)
+	response, err := services.FetchRecentBlocksPaginated(ctx, page, pageSize)
 	if err != nil {
 		log.Printf("Error fetching recent blocks: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -61,7 +73,7 @@ func GetRecentBlocksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(blocks)
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetBlockByHeightHandler returns detailed block info by height

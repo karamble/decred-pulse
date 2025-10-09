@@ -93,6 +93,14 @@ export interface AddressInfo {
   hasIndex: boolean;
 }
 
+export interface PaginatedBlocksResponse {
+  blocks: BlockSummary[];
+  currentPage: number;
+  pageSize: number;
+  totalBlocks: number;
+  totalPages: number;
+}
+
 // API Functions
 
 export async function searchExplorer(query: string): Promise<SearchResult> {
@@ -105,6 +113,14 @@ export async function searchExplorer(query: string): Promise<SearchResult> {
 
 export async function getRecentBlocks(count: number = 10): Promise<BlockSummary[]> {
   const response = await fetch(`${API_BASE_URL}/explorer/blocks/recent?count=${count}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch recent blocks');
+  }
+  return response.json();
+}
+
+export async function getRecentBlocksPaginated(page: number = 1, pageSize: number = 10): Promise<PaginatedBlocksResponse> {
+  const response = await fetch(`${API_BASE_URL}/explorer/blocks/recent?page=${page}&pageSize=${pageSize}`);
   if (!response.ok) {
     throw new Error('Failed to fetch recent blocks');
   }
