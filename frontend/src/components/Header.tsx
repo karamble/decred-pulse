@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { Link, useLocation } from 'react-router-dom';
-import { Wallet, Compass } from 'lucide-react';
+import { Wallet, Compass, Vote } from 'lucide-react';
 
 interface HeaderProps {
   nodeVersion?: string;
@@ -13,17 +13,20 @@ export const Header = ({ nodeVersion }: HeaderProps) => {
   const location = useLocation();
   const isWalletPage = location.pathname === '/wallet';
   const isExplorerPage = location.pathname.startsWith('/explorer');
+  const isGovernancePage = location.pathname.startsWith('/governance');
   const isNodePage = location.pathname === '/';
 
   const getPageTitle = () => {
     if (isWalletPage) return 'Wallet';
     if (isExplorerPage) return 'Explorer';
+    if (isGovernancePage) return 'Governance';
     return 'Node';
   };
 
   const getPageDescription = () => {
     if (isWalletPage) return 'Monitor your watch-only wallet and transactions';
     if (isExplorerPage) return 'Search and explore the Decred blockchain';
+    if (isGovernancePage) return 'Track treasury, proposals, and voting activity';
     return 'Monitor your dcrd node performance and network status';
   };
 
@@ -86,17 +89,19 @@ export const Header = ({ nodeVersion }: HeaderProps) => {
           <span className="text-primary font-semibold">Explorer</span>
         </Link>
 
-        <a
-          href="https://nodes.jholdstock.uk/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-4 py-3 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-all duration-300 flex items-center gap-2"
+        <Link
+          to="/governance"
+          className={`px-4 py-3 rounded-lg border transition-all duration-300 flex items-center gap-2 ${
+            isGovernancePage
+              ? 'bg-primary/20 border-primary/40'
+              : 'bg-primary/10 border-primary/20 hover:bg-primary/20'
+          }`}
         >
-          <div className="h-10 w-10 rounded-lg flex items-center justify-center font-bold text-sm bg-gradient-primary">
-            DCR
+          <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-gradient-primary">
+            <Vote className="h-5 w-5 text-white" />
           </div>
-          <span className="text-primary font-semibold">Node Mapper</span>
-        </a>
+          <span className="text-primary font-semibold">Governance</span>
+        </Link>
 
         {nodeVersion && (
           <div className="px-4 py-2 rounded-lg bg-primary/10 border border-primary/20">

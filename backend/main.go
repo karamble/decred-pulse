@@ -106,6 +106,12 @@ func main() {
 	api.HandleFunc("/explorer/transactions/{txhash}", handlers.GetTransactionHandler).Methods("GET")
 	api.HandleFunc("/explorer/address/{address}", handlers.GetAddressHandler).Methods("GET")
 
+	// Treasury/Governance routes
+	api.HandleFunc("/treasury/info", handlers.GetTreasuryInfoHandler).Methods("GET")
+	api.HandleFunc("/treasury/scan-history", handlers.TriggerTSpendScanHandler).Methods("POST")
+	api.HandleFunc("/treasury/scan-progress", handlers.GetTSpendScanProgressHandler).Methods("GET")
+	api.HandleFunc("/treasury/scan-results", handlers.GetTSpendScanResultsHandler).Methods("GET")
+
 	// CORS configuration
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
